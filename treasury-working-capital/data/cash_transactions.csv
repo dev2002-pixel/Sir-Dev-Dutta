@@ -1,0 +1,17 @@
+date,category,amount
+2026-07-01,customer_collections,120000
+2026-07-01,supplier_payments,-620000
+2026-07-02,customer_collections,730000
+2026-07-02,payroll,-310000
+2026-07-03,customer_collections,910000
+2026-07-03,supplier_payments,-740000
+2026-07-06,customer_collections,680000
+2026-07-06,tax,-420000
+2026-07-07,customer_collections,790000
+2026-07-07,supplier_payments,-650000
+2026-07-08,customer_collections,880000
+2026-07-08,operating_expenses,-280000
+2026-07-09,customer_collections,720000
+2026-07-09,supplier_payments,-690000
+2026-07-10,customer_collections,960000
+2026-07-10,debt_service,-510000
