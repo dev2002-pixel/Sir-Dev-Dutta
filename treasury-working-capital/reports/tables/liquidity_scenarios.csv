@@ -1,0 +1,10 @@
+collection_shock_pct,outflow_shock_pct,minimum_cash,threshold_breached
+0.0,0.0,1000000.0,False
+0.0,5.0,969000.0,True
+0.0,10.0,938000.0,True
+-5.0,0.0,994000.0,True
+-5.0,5.0,963000.0,True
+-5.0,10.0,932000.0,True
+-10.0,0.0,988000.0,True
+-10.0,5.0,957000.0,True
+-10.0,10.0,926000.0,True

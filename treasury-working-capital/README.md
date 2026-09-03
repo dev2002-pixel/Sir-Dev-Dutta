@@ -8,6 +8,7 @@ A compact Python portfolio project for measuring working-capital efficiency and 
 - Builds a dated, rolling cash-balance forecast from signed cash transactions.
 - Runs a grid of collection and disbursement stress cases against a liquidity threshold.
 - Runs a reproducible Monte Carlo simulation to estimate the probability of a liquidity-threshold breach.
+- Produces reusable CSV report tables and presentation-ready charts through one command.
 
 ## Project layout
 
@@ -17,7 +18,10 @@ treasury-working-capital/
 ├── src/
 │   ├── working_capital.py
 │   ├── cash_forecast.py
-│   └── scenario_analysis.py
+│   ├── scenario_analysis.py
+│   ├── visualizations.py
+│   └── main_analytics.py
+├── reports/              # Generated tables and GitHub-viewable chart images
 ├── tests/
 ├── requirements.txt
 └── README.md
@@ -33,8 +37,21 @@ pip install -r requirements.txt
 python src/working_capital.py
 python src/cash_forecast.py
 python src/scenario_analysis.py
+python src/main_analytics.py
 python -m pytest
 ```
+
+## Analytics report
+
+Run `python src/main_analytics.py` to regenerate the files in `reports/`. The command writes CSV tables for metrics, forecast, stress scenarios, and Monte Carlo summary, plus the two charts below.
+
+### Working-capital trend
+
+![Working-capital efficiency](reports/figures/working_capital_efficiency.svg)
+
+### Liquidity stress test
+
+![Liquidity stress test](reports/figures/liquidity_stress_test.svg)
 
 ## Metric definitions
 

@@ -1,0 +1,6 @@
+metric,value
+simulations,10000
+liquidity_threshold,1000000
+breach_probability,0.4986
+p05_minimum_cash,900805.2340407782
+median_minimum_cash,1000171.5513604494
