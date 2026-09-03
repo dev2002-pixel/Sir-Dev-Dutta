@@ -8,6 +8,11 @@ from credit_risk import evaluate_credit_risk, load_default_credit_inputs
 from scenario_analysis import monte_carlo_liquidity, run_liquidity_scenarios
 from sofr_analysis import analyze_sofr_relationships, forecast_sofr, load_synthetic_sofr, sensitivity_table
 from sofr_visualizations import create_sofr_forecast_chart, create_sofr_relationship_chart, create_sofr_sensitivity_chart
+from liquidity_visualizations import (
+    create_liquidity_fan_chart,
+    create_minimum_cash_distribution_chart,
+    create_monte_carlo_paths_chart,
+)
 from visualizations import (
     create_balance_sheet_chart,
     create_cash_flow_chart,
@@ -30,8 +35,6 @@ def run() -> dict[str, Path]:
     simulation = monte_carlo_liquidity(forecast, threshold=THRESHOLD)
     credit_tests, credit_summary = evaluate_credit_risk(load_default_credit_inputs(), forecast, scenarios)
 
-    # SOFR module: forecast the benchmark rate, quantify relationships with
-    # working-capital metrics, and translate rate shocks into interest expense.
     sofr_history = load_synthetic_sofr()
     sofr_prediction = forecast_sofr(sofr_history, horizon=6)
     sofr_relationships = analyze_sofr_relationships(sofr_history, metrics, forecast)
@@ -53,12 +56,16 @@ def run() -> dict[str, Path]:
     (tables / "monte_carlo_summary.csv").write_text(
         "metric,value\n" + "\n".join(f"{key},{value}" for key, value in simulation.items()) + "\n"
     )
+
     return {
         "working_capital_efficiency": create_working_capital_chart(metrics, figures / "working_capital_efficiency.svg"),
         "dso_dio_dpo_trend": create_efficiency_metrics_chart(metrics, figures / "dso_dio_dpo_trend.svg"),
         "balance_sheet_drivers": create_balance_sheet_chart(metrics, figures / "working_capital_drivers.svg"),
         "cash_flow_dynamics": create_cash_flow_chart(forecast, figures / "cash_flow_dynamics.svg"),
         "liquidity_stress_test": create_liquidity_chart(forecast, scenarios, THRESHOLD, figures / "liquidity_stress_test.svg"),
+        "monte_carlo_paths": create_monte_carlo_paths_chart(forecast, THRESHOLD, figures / "monte_carlo_paths.png"),
+        "monte_carlo_distribution": create_minimum_cash_distribution_chart(forecast, THRESHOLD, figures / "monte_carlo_minimum_cash.png"),
+        "liquidity_fan": create_liquidity_fan_chart(forecast, THRESHOLD, figures / "liquidity_fan_chart.png"),
         "sofr_forecast": create_sofr_forecast_chart(sofr_history, sofr_prediction, figures / "sofr_forecast.svg"),
         "sofr_relationships": create_sofr_relationship_chart(sofr_relationships, figures / "sofr_relationships.svg"),
         "sofr_sensitivity": create_sofr_sensitivity_chart(sofr_sensitivity, figures / "sofr_sensitivity.svg"),
