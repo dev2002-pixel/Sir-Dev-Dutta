@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from cash_forecast import load_default_forecast
+from credit_risk import evaluate_credit_risk, load_default_credit_inputs
 from scenario_analysis import monte_carlo_liquidity, run_liquidity_scenarios
 from visualizations import create_liquidity_chart, create_working_capital_chart
 from working_capital import load_default_data
@@ -19,12 +20,15 @@ def run() -> dict[str, Path]:
     forecast = load_default_forecast()
     scenarios = run_liquidity_scenarios(forecast, threshold=THRESHOLD)
     simulation = monte_carlo_liquidity(forecast, threshold=THRESHOLD)
+    credit_tests, credit_summary = evaluate_credit_risk(load_default_credit_inputs(), forecast, scenarios)
     tables = REPORTS_DIR / "tables"
     figures = REPORTS_DIR / "figures"
     tables.mkdir(parents=True, exist_ok=True)
     metrics.to_csv(tables / "working_capital_metrics.csv", index=False)
     forecast.to_csv(tables / "cash_forecast.csv", index=False)
     scenarios.to_csv(tables / "liquidity_scenarios.csv", index=False)
+    credit_tests.to_csv(tables / "credit_tests.csv", index=False)
+    credit_summary.to_csv(tables / "credit_risk_summary.csv", index=False)
     (tables / "monte_carlo_summary.csv").write_text(
         "metric,value\n" + "\n".join(f"{key},{value}" for key, value in simulation.items()) + "\n"
     )

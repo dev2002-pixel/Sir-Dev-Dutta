@@ -9,6 +9,7 @@ A compact Python portfolio project for measuring working-capital efficiency and 
 - Runs a grid of collection and disbursement stress cases against a liquidity threshold.
 - Runs a reproducible Monte Carlo simulation to estimate the probability of a liquidity-threshold breach.
 - Produces reusable CSV report tables and presentation-ready charts through one command.
+- Adds an illustrative bank-credit review of leverage, coverage, liquidity, covenant headroom, stress sensitivity, and refinancing timing.
 
 ## Project layout
 
@@ -65,9 +66,25 @@ All monthly flows are annualised using a 365-day convention.
 | CCC | DSO + DIO − DPO |
 | NWC | Accounts receivable + inventory − accounts payable |
 
+## Bank credit and default-risk perspective
+
+The `data/credit_inputs.csv` file is the borrower input sheet. It captures synthetic debt, cash, undrawn facility, EBITDA, interest, debt service, maturity, and covenant limits. `src/credit_risk.py` evaluates the following bank-review inputs:
+
+| Credit input | Bank-review purpose |
+| --- | --- |
+| Net leverage | Debt burden relative to recurring earnings |
+| Interest coverage | Capacity to pay interest from earnings |
+| Debt-service coverage | Capacity to pay contractual debt service |
+| Minimum cash and undrawn facility | Liquidity cushion and reliance on committed funding |
+| Liquidity stress cases | Resilience when collections fall or outflows rise |
+| Debt maturity | Refinancing risk and time available to address it |
+| Covenant limits | Early-warning signals and contractual headroom |
+
+The resulting `credit_tests.csv` and `credit_risk_summary.csv` are written to `reports/tables/`. The **indicative risk score is not a probability of default (PD)** and must not be used as a lending decision, rating, or regulatory model. A real bank would calibrate PD using historical defaults, borrower-specific cash flows, collateral, sector conditions, legal documentation, and its own credit policy.
+
 ## Assumptions and interpretation
 
-The sample cash forecast begins with $1.5m of cash and applies transactions on their stated dates. Scenario analysis applies percentage shocks to positive cash flows (collections) and negative cash flows (outflows); a breach means cash falls below the selected threshold. The Monte Carlo model applies independent normal shocks to daily net cash flow. It is an illustrative planning tool, not a production liquidity model or investment recommendation.
+The sample cash forecast begins with $1.5m of cash and applies transactions on their stated dates. Scenario analysis applies percentage shocks to positive cash flows (collections) and negative cash flows (outflows); a breach means cash falls below the selected threshold. The Monte Carlo model applies independent normal shocks to daily net cash flow. The credit review prioritises repayment capacity under stress, consistent with supervisory credit-risk principles. It is an illustrative planning tool, not a production liquidity model, lending decision, or investment recommendation.
 
 ## Extending the project
 

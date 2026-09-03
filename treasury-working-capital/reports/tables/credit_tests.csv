@@ -1,0 +1,5 @@
+test,actual,threshold,limit_type,status
+Net leverage,2.06,3.0,Maximum,Pass
+Interest coverage,6.96,3.0,Minimum,Pass
+Debt-service coverage,2.67,1.25,Minimum,Pass
+Base minimum cash,1000000.0,1000000.0,Minimum,Pass

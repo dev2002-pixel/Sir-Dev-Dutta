@@ -1,0 +1,13 @@
+metric,value
+Indicative risk tier,Elevated
+Indicative risk score (0-100; not PD),61.7
+Net debt,16500000
+Net leverage (x),2.0625
+Interest coverage (x),6.956521739130435
+Debt-service coverage (x),2.6666666666666665
+Base minimum cash,1000000.0
+Available liquidity including undrawn facility,6000000.0
+Worst stressed cash,926000.0
+Liquidity scenario breach rate,0.8888888888888888
+Days to debt maturity,274
+Covenant breaches,0
