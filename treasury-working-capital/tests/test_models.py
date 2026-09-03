@@ -5,6 +5,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 from cash_forecast import load_default_forecast
 from scenario_analysis import monte_carlo_liquidity, run_liquidity_scenarios
 from working_capital import load_default_data
+from main_analytics import run
 
 
 def test_working_capital_metrics_have_expected_columns():
@@ -21,3 +22,12 @@ def test_forecast_and_monte_carlo_are_reproducible():
     second = monte_carlo_liquidity(forecast, simulations=100, seed=7)
     assert first == second
     assert len(run_liquidity_scenarios(forecast)) == 9
+
+
+def test_main_analytics_creates_report_files():
+    outputs = run()
+    assert all(path.exists() for path in outputs.values())
+    report_dir = Path(__file__).resolve().parents[1] / "reports" / "tables"
+    assert {"working_capital_metrics.csv", "cash_forecast.csv", "liquidity_scenarios.csv", "monte_carlo_summary.csv"} <= {
+        path.name for path in report_dir.iterdir()
+    }

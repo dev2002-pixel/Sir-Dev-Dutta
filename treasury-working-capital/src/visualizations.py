@@ -38,7 +38,7 @@ def create_working_capital_chart(metrics: pd.DataFrame, output_path: Path) -> Pa
             f'<polyline points="{_points(nwc, x0, y0, width, height)}" fill="none" stroke="{GREEN}" stroke-width="4"/>'
             f'<text class="label" x="{x0}" y="470" fill="{BLUE}">● Cash conversion cycle: {ccc[-1]:.2f} days</text>'
             f'<text class="label" x="440" y="470" fill="{GREEN}">■ Net working capital: ${nwc[-1]:.2f}m</text>{xlabels}'
-            '<text class="label" x="95" y="75">Trend index (each series scaled to its displayed range)</text>')
+            '<text class="label" x="95" y="75">CCC and NWC are independently scaled to show their trends clearly</text>')
     return _write(output_path, body)
 
 
