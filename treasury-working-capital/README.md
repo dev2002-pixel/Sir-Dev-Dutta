@@ -8,6 +8,9 @@ A compact Python portfolio project for measuring working-capital efficiency and 
 - Builds a dated, rolling cash-balance forecast from signed cash transactions.
 - Runs a grid of collection and disbursement stress cases against a liquidity threshold.
 - Runs a reproducible Monte Carlo simulation to estimate the probability of a liquidity-threshold breach.
+- Forecasts **SOFR** with a transparent AR(1) model and a 95% prediction interval.
+- Measures descriptive SOFR relationships with DSO, DIO, DPO, CCC and NWC.
+- Runs SOFR shock sensitivity for illustrative floating-rate interest expense.
 - Produces reusable CSV report tables and presentation-ready charts through one command.
 - Adds an illustrative bank-credit review of leverage, coverage, liquidity, covenant headroom, stress sensitivity, and refinancing timing.
 
@@ -20,6 +23,9 @@ treasury-working-capital/
 │   ├── working_capital.py
 │   ├── cash_forecast.py
 │   ├── scenario_analysis.py
+│   ├── credit_risk.py
+│   ├── sofr_analysis.py          # SOFR forecasting + sensitivity
+│   ├── sofr_visualizations.py    # SOFR graphical analysis
 │   ├── visualizations.py
 │   └── main_analytics.py
 ├── reports/              # Generated tables and GitHub-viewable chart images
@@ -44,7 +50,7 @@ python -m pytest
 
 ## Analytics report
 
-Run `python src/main_analytics.py` to regenerate the files in `reports/`. The command writes CSV tables for metrics, forecast, stress scenarios, and Monte Carlo summary, plus the two charts below.
+Run `python src/main_analytics.py` to regenerate the files in `reports/`. The command writes working-capital, liquidity, credit-risk and SOFR CSV tables, plus presentation-ready SVG charts.
 
 ### Working-capital trend
 
@@ -53,6 +59,28 @@ Run `python src/main_analytics.py` to regenerate the files in `reports/`. The co
 ### Liquidity stress test
 
 ![Liquidity stress test](reports/figures/liquidity_stress_test.svg)
+
+### SOFR forecast
+
+![SOFR forecast](reports/figures/sofr_forecast.svg)
+
+### SOFR relationships
+
+![SOFR relationships](reports/figures/sofr_relationships.svg)
+
+### SOFR interest-rate sensitivity
+
+![SOFR sensitivity](reports/figures/sofr_sensitivity.svg)
+
+## SOFR methodology
+
+`src/sofr_analysis.py` uses a deliberately transparent AR(1) model:
+
+**SOFR(t) = α + β × SOFR(t−1) + ε(t)**
+
+The bundled monthly observations are synthetic. The model produces a six-month point forecast and a simple 95% prediction interval based on the historical regression residual volatility. This is a portfolio demonstration rather than a production interest-rate forecast.
+
+The relationship analysis joins the synthetic SOFR series to the project's monthly working-capital metrics and reports Pearson correlations. These correlations are **descriptive, not causal**. The sensitivity analysis translates SOFR shocks into annual interest expense for illustrative $5m, $10m and $25m floating-rate balances.
 
 ## Metric definitions
 
@@ -88,4 +116,4 @@ The sample cash forecast begins with $1.5m of cash and applies transactions on t
 
 ## Extending the project
 
-Replace the synthetic CSVs with approved internal data, reconcile opening balances to the general ledger, add customer/supplier payment behaviour, and calibrate shocks from historical volatility before using it for decisions.
+Replace the synthetic CSVs with approved internal data, add an official SOFR data feed such as the Federal Reserve Bank of New York's published series, consider OLS/ARIMA/state-space models and out-of-sample backtesting, and calibrate rate shocks from historical volatility before using it for decisions.
