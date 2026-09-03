@@ -34,7 +34,8 @@ def calculate_working_capital_metrics(
     result["dpo"] = result["accounts_payable"] / (result["cogs"] * 12) * 365
     result["cash_conversion_cycle"] = result["dso"] + result["dio"] - result["dpo"]
     result["net_working_capital"] = result["accounts_receivable"] + result["inventory"] - result["accounts_payable"]
-    return result[["month", "dso", "dio", "dpo", "cash_conversion_cycle", "net_working_capital"]].round(2)
+    # Include balance sheet columns alongside metrics
+    return result[["month", "accounts_receivable", "inventory", "accounts_payable", "dso", "dio", "dpo", "cash_conversion_cycle", "net_working_capital"]].round(2)
 
 
 def load_default_data(data_dir: Path = DATA_DIR) -> pd.DataFrame:
