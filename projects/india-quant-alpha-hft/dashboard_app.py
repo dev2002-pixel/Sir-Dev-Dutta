@@ -359,17 +359,17 @@ def risk_dashboard(region="INR"):
         with calc_left:
             existing_capital = st.number_input(
                 f"Current portfolio value ({currency})", min_value=0.0, value=1000000.0,
-                step=50000.0, format="%.2f", key="contrib_existing_capital"
+                step=50000.0, format="%.2f", key=f"contrib_existing_capital_{region}"
             )
         with calc_right:
             new_money = st.number_input(
                 f"New money to invest ({currency})", min_value=0.0, value=100000.0,
-                step=10000.0, format="%.2f", key="contrib_new_money"
+                step=10000.0, format="%.2f", key=f"contrib_new_money_{region}"
             )
         allocation_method = st.selectbox(
             "How should the new money be allocated?",
             ["Maintain current stock weights", "Equal-weight selected stocks", "Custom allocation"],
-            key="contrib_allocation_method"
+            key=f"contrib_allocation_method_{region}"
         )
         if allocation_method == "Maintain current stock weights":
             equity_base = weights.reindex(equity_assets).fillna(0.0)
@@ -384,7 +384,7 @@ def risk_dashboard(region="INR"):
                 with custom_cols[j % len(custom_cols)]:
                     custom_raw[asset] = st.slider(
                         f"New {asset} allocation", 0, 100, int(100/len(equity_assets)),
-                        5, key=f"contrib_alloc_{asset}"
+                        5, key=f"contrib_alloc_{region}_{asset}"
                     )
             custom_total = sum(custom_raw.values())
             allocation = (pd.Series(custom_raw, dtype=float) / custom_total
@@ -524,17 +524,18 @@ def risk_dashboard(region="INR"):
         st.caption("Shock P&L = capital × Σ(weight × asset shock). This is a transparent linear scenario, not a full repricing or liquidity stress test.")
         export=pd.DataFrame({"portfolio_return":port_ret,"equity":equity,"drawdown":drawdown})
         st.download_button("Download portfolio risk series (CSV)",export.to_csv().encode("utf-8"),
-                           file_name="india_quant_portfolio_risk.csv",mime="text/csv")
+                           file_name=f"{region.lower()}_portfolio_risk.csv",mime="text/csv")
         st.download_button("Download normalised weights (CSV)",weights.rename("weight").to_csv().encode("utf-8"),
-                           file_name="india_quant_portfolio_weights.csv",mime="text/csv")
+                           file_name=f"{region.lower()}_portfolio_weights.csv",mime="text/csv")
 
 
 def data_explorer_dashboard(region="INR"):
     is_us = region == "USD"
+    currency_symbol = "$" if is_us else "₹"
     explorer_universe = (["SP500","NASDAQ","DOW","RUSSELL2000","VIX","AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ","DXY","EURUSD","USDJPY"] if is_us else ["RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA","NIFTY50","BANKNIFTY","NIFTYENERGY","INDIA_VIX","USDINR","BRENT_CRUDE","WTI_CRUDE","GOLD"])
     st.markdown('<div class="section-kicker">04 / cross-asset data terminal</div>', unsafe_allow_html=True)
     st.subheader(f"{region} market data & analytics")
-    st.caption("Yahoo Finance · adjusted daily prices · fetched on demand and cached for 15 minutes.")
+    st.caption(f"Yahoo Finance · {region} market data · fetched on demand and cached for 15 minutes.")
     with st.container(border=True):
         c1,c2,c3=st.columns([1.4,1,1])
         with c1:
@@ -601,7 +602,7 @@ def data_explorer_dashboard(region="INR"):
         fig.add_trace(go.Scatter(x=detail.index,y=detail["Close"].rolling(ma_slow).mean(),
             name=f"SMA {ma_slow}",line=dict(color=BLUE,width=1.3)))
         fig.update_layout(title=f"{chart_asset} · price and moving averages",xaxis_rangeslider_visible=False,
-            yaxis_title="Adjusted price · provider currency")
+            yaxis_title=f"Adjusted price · {currency_code}")
         st.plotly_chart(polish(fig,440),use_container_width=True)
         if "Volume" in detail and detail["Volume"].notna().any():
             vf=go.Figure(go.Bar(x=detail.index,y=detail["Volume"],name="Volume",marker_color=BLUE))
@@ -764,6 +765,8 @@ def download_equity_history(tickers, start_date, end_date, interval="1d"):
 
 def equity_markets_dashboard(region="INR"):
     allowed_groups = ["US · Mega caps", "US · ETFs & benchmarks"] if region == "USD" else ["India · Large caps", "India · Additional equities"]
+    currency_code = "USD" if region == "USD" else "INR"
+    currency_symbol = "$" if region == "USD" else "₹"
     st.markdown('<div class="section-kicker">08 / global equity research</div>', unsafe_allow_html=True)
     st.subheader(f"Equity markets · {region}")
     st.caption("Multi-stock market monitor with adjusted OHLCV history, technical indicators, relative performance and risk analytics.")
@@ -821,7 +824,7 @@ def equity_markets_dashboard(region="INR"):
     metric_cols = st.columns(min(4,len(available)))
     for i,ticker in enumerate(available):
         change = (last[ticker]/prev[ticker]-1)*100 if pd.notna(prev[ticker]) and prev[ticker] else np.nan
-        metric_cols[i%len(metric_cols)].metric(ticker, f"{last[ticker]:,.2f}", f"{change:+.2f}% · last bar" if np.isfinite(change) else "—")
+        metric_cols[i%len(metric_cols)].metric(ticker, f"{currency_symbol}{last[ticker]:,.2f}", f"{change:+.2f}% · last bar" if np.isfinite(change) else "—")
     st.caption(f"{len(available)} tickers returned · last observation {prices.dropna(how='all').index[-1]:%Y-%m-%d} · Yahoo Finance research data; not guaranteed live.")
     tabs = st.tabs(["Single-stock technicals","Relative performance","Risk & correlation","Raw data"])
     with tabs[0]:
@@ -930,7 +933,7 @@ def market_dashboard():
             last = float(frame["Close"].iloc[-1])
             previous = float(frame["Close"].iloc[-2]) if len(frame) > 1 else last
             change = (last / previous - 1) * 100 if previous else 0
-            col.metric(name, f"{last:,.2f}", f"{change:+.2f}% · last bar")
+            col.metric(name, f"₹{last:,.2f}", f"{change:+.2f}% · last bar")
         live_prices = pd.concat({name: intraday[name]["Close"].rename(name) for name in available}, axis=1)
         live_indexed = live_prices / live_prices.ffill().bfill().iloc[0] * 100
         live_fig = go.Figure()
