@@ -14,22 +14,31 @@ This repository documents my work in **quantitative finance, financial engineeri
 
 ## Projects
 
-### 1. LeetCode Python
+### 1. Indian Equity & Index Futures — Quantitative Alpha Research and HFT Simulator
+A reproducible research pipeline combining econometric pair modelling, out-of-sample mean-reversion backtesting, transaction-cost deductions, risk metrics and a simplified order-book execution simulator.
+
+**Coursework connection:** MF840 Financial Econometrics · MF796 Computational Methods · MF821 High-Frequency Trading.
+
+[Open project folder](./projects/india-quant-alpha-hft/README.md)
+
+> The sample generator creates synthetic data for reproducibility. No profitability claim is made; real-market conclusions require licensed market data and realistic execution costs.
+
+### 2. LeetCode Python
 Structured practice in Python for quantitative finance and technical interviews.
 
-### 2. Treasury Working Capital Analytics
+### 3. Treasury Working Capital Analytics
 Cash-flow forecasting, working-capital metrics, liquidity analysis, and scenario testing.
 
-### 3. FX Derivative Pricing Engine
+### 4. FX Derivative Pricing Engine
 Forward pricing, FX exposure analysis, and hedging calculations.
 
-### 4. Quant Risk Models
+### 5. Quant Risk Models
 VaR, CVaR, Monte Carlo simulation, and portfolio risk analytics.
 
-### 5. Fixed Income & Interest Rate Models
+### 6. Fixed Income & Interest Rate Models
 Yield curves, bond pricing, duration, convexity, and interest-rate risk.
 
-### 6. Quant Trading Research
+### 7. Quant Trading Research
 Backtesting, factor signals, performance attribution, and risk-adjusted returns.
 
 ## Technology
