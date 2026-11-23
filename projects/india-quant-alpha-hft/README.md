@@ -32,7 +32,24 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has eight workspaces:
+The dashboard has twelve workspaces with India/INR and US/USD research separated at the navigation level:
+
+
+### Region-separated workspaces · INR vs USD
+
+The dashboard has separate workspaces and widget state for each market. It does not combine INR and USD prices, portfolio capital or returns, and does not apply implicit FX conversion.
+
+- **India Markets · INR:** NSE / Reliance market linkage, NIFTY 50, Bank NIFTY, NIFTY Energy and India VIX.
+- **US Markets · USD:** S&P 500, Nasdaq, Dow Jones, Russell 2000, VIX and US mega-cap leadership.
+- **India Equities · INR:** NSE large caps and additional India-listed equities, technical indicators, relative performance, correlation and exports.
+- **US Equities · USD:** US mega caps and ETFs (AAPL, MSFT, NVDA, AMZN, GOOGL, META, JPM, TSLA, SPY, QQQ, VTI, IWM, SMH and XLF), with the same technical-analysis suite.
+- **India Portfolio & Risk · INR:** India-only stock/index basket, NIFTY 50 benchmark beta, INR capital and rupee contribution calculator.
+- **US Portfolio & Risk · USD:** US-only basket, S&P 500 benchmark beta, USD capital and dollar contribution calculator.
+- **India Multi-Asset · INR:** Indian equities, NSE indices, India VIX, USD/INR and commodity proxies.
+- **US Multi-Asset · USD:** US benchmarks/equities, VIX, dollar index and major FX pairs.
+- **Futures & Options:** dedicated India option/NSE bhavcopy workflows and a separate US derivatives tab with US listed options plus E-mini index and Treasury futures proxies.
+
+US options and futures snapshots are Yahoo Finance research proxies, not OPRA/CME direct feeds. Futures symbols are continuous provider proxies and do not specify a tradable expiry or contract multiplier. The INR and USD risk workspaces remain independent.
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -62,7 +79,7 @@ The market workspace uses Yahoo Finance symbols as research proxies:
 - NIFTY Energy: `^CNXENERGY` (may not be available from the provider)
 
 
-### 3. Equity Markets
+### 3. Equity Markets (regional versions are now separated into India Equities · INR and US Equities · USD)
 - Dedicated India and US equity universe with Indian large caps, additional NSE-listed equities, US mega caps and benchmark ETFs
 - Custom Yahoo ticker input for additional listings and international symbols supported by the provider
 - Daily or weekly adjusted OHLCV history, candlesticks, configurable moving averages, Bollinger Bands, RSI(14), MACD(12/26/9) and volume
@@ -180,7 +197,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive eight-workspace trading dashboard
+- `dashboard_app.py` — interactive region-separated trading dashboard
 - `stochastic_astro_lab.py` — GBM simulation, Itô coefficient calculator and crude/gold event-study workspace
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
