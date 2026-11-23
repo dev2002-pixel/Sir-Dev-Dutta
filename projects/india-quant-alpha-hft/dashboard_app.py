@@ -1227,7 +1227,7 @@ def fo_dashboard():
     st.markdown('<div class="section-kicker">05 / derivatives analytics</div>', unsafe_allow_html=True)
     st.subheader("Futures & options intelligence")
     st.caption("Yahoo Finance option-chain snapshots where supported, plus user-supplied NSE derivatives files. This workspace does not imply a licensed or complete NSE feed.")
-    tab_chain, tab_futures, tab_index_futures, tab_import = st.tabs(["Options chain", "Global futures monitor", "NSE index futures · daily", "NSE options import"])
+    tab_chain, tab_futures, tab_us, tab_index_futures, tab_import = st.tabs(["India options chain", "Global commodity futures", "US derivatives · USD", "NSE index futures · daily", "NSE options import"])
 
     with tab_chain:
         st.markdown("#### Yahoo Finance option chain")
@@ -1323,6 +1323,64 @@ def fo_dashboard():
             else:
                 st.warning("No futures history returned. Try another contract or refresh later.")
         st.info("Continuous futures symbols are stitched provider series. They do not represent a specific expiry, tradable contract, official settlement, or roll-adjusted strategy P&L.")
+
+
+    with tab_us:
+        st.markdown("#### US listed options & futures · USD research")
+        us_underlyings = {"Apple":"AAPL","Microsoft":"MSFT","NVIDIA":"NVDA","Amazon":"AMZN","Tesla":"TSLA","S&P 500 ETF":"SPY","Nasdaq 100 ETF":"QQQ"}
+        left,right = st.columns(2)
+        with left:
+            us_label = st.selectbox("US option underlying", list(us_underlyings), key="us_option_underlying")
+        us_symbol = us_underlyings[us_label]
+        with right:
+            us_expiries = yahoo_option_expiries(us_symbol)
+            us_expiry = st.selectbox("US option expiry", us_expiries, key="us_option_expiry") if us_expiries else None
+        if not us_expiries:
+            st.info(f"No US option expiry is currently returned for {us_symbol}. Try another underlying or refresh later.")
+        else:
+            if st.button("Refresh US option chain", key="refresh_us_option_chain"):
+                yahoo_option_chain.clear()
+            us_chain = yahoo_option_chain(us_symbol, us_expiry)
+            if us_chain.empty:
+                st.warning("The provider returned an empty US option chain for this expiry.")
+            else:
+                for col in ["openInterest","volume","impliedVolatility","strike","lastPrice","bid","ask"]:
+                    if col not in us_chain:
+                        us_chain[col] = np.nan
+                call_oi = pd.to_numeric(us_chain.loc[us_chain.option_type=="CALL","openInterest"],errors="coerce").sum()
+                put_oi = pd.to_numeric(us_chain.loc[us_chain.option_type=="PUT","openInterest"],errors="coerce").sum()
+                pcr = put_oi/call_oi if call_oi else np.nan
+                pain, curve = max_pain_from_chain(us_chain)
+                metric_row([("CALL OI",f"{call_oi:,.0f}","provider reported"),("PUT OI",f"{put_oi:,.0f}","provider reported"),("PUT / CALL OI",f"{pcr:.2f}" if np.isfinite(pcr) else "—","descriptive"),("EST. MAX PAIN",f"{pain:,.2f}" if np.isfinite(pain) else "—","OI-based estimate")])
+                view = us_chain[["option_type","strike","lastPrice","bid","ask","volume","openInterest","impliedVolatility"]].copy()
+                view["impliedVolatility"] = pd.to_numeric(view["impliedVolatility"],errors="coerce")*100
+                st.dataframe(view.sort_values(["strike","option_type"]).style.format({"strike":"{:,.2f}","lastPrice":"{:,.2f}","bid":"{:,.2f}","ask":"{:,.2f}","volume":"{:,.0f}","openInterest":"{:,.0f}","impliedVolatility":"{:.2f}%"},na_rep="—"),use_container_width=True,height=400)
+                st.download_button("Download US options chain CSV",us_chain.to_csv(index=False).encode("utf-8"),f"{us_symbol}_{us_expiry}_options_usd.csv","text/csv")
+        st.markdown("#### US index & Treasury futures proxies")
+        us_futures = {"E-mini S&P 500":"ES=F","E-mini Nasdaq 100":"NQ=F","E-mini Dow":"YM=F","Russell 2000":"RTY=F","10Y Treasury note":"ZN=F","30Y Treasury bond":"ZB=F"}
+        chosen_us_futures = st.multiselect("US futures contracts",list(us_futures),default=["E-mini S&P 500","E-mini Nasdaq 100","10Y Treasury note"],key="us_futures_symbols")
+        us_period = st.selectbox("US futures history",["1mo","3mo","6mo","1y","2y"],index=3,key="us_futures_period")
+        if chosen_us_futures:
+            us_rows=[]
+            for label in chosen_us_futures:
+                try:
+                    frame=yf.download(us_futures[label],period=us_period,auto_adjust=False,progress=False,threads=False)
+                    if isinstance(frame.columns,pd.MultiIndex):
+                        frame.columns=frame.columns.get_level_values(0)
+                    if not frame.empty and "Close" in frame:
+                        series=frame["Close"]
+                        if isinstance(series,pd.DataFrame): series=series.iloc[:,0]
+                        us_rows.append(pd.DataFrame({"Date":series.index,"Contract":label,"Close":series.values}))
+                except Exception:
+                    continue
+            if us_rows:
+                us_data=pd.concat(us_rows,ignore_index=True)
+                fig=px.line(us_data,x="Date",y="Close",color="Contract",title="US index & Treasury futures · provider continuous proxies")
+                st.plotly_chart(polish(fig,360),use_container_width=True)
+                st.download_button("Download US futures history CSV",us_data.to_csv(index=False).encode("utf-8"),"us_futures_history_usd.csv","text/csv")
+            else:
+                st.warning("No US futures history returned for the selected contracts.")
+        st.caption("Yahoo option chains and continuous futures are provider snapshots/proxies, not CME/OPRA direct feeds, official settlement prices or guaranteed real-time data. Futures contract multipliers, tick values, expiry and roll conventions must be verified independently.")
 
     with tab_index_futures:
         st.markdown("#### NSE index futures · UDiFF daily bhavcopy")
