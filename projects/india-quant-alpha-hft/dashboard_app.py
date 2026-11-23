@@ -881,7 +881,7 @@ def normalize_nse_index_futures(raw):
                 rename[lookup[key]] = target
                 break
     frame = source.rename(columns=rename).copy()
-    required = ["Date", "Symbol", "Expiry", "Close"]
+    required = ["Date", "Symbol", "InstrumentType", "Expiry", "Close"]
     missing = [c for c in required if c not in frame.columns]
     if missing:
         raise ValueError("Missing required fields after header mapping: " + ", ".join(missing))
