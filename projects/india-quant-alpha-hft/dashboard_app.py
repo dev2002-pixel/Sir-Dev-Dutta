@@ -8,6 +8,8 @@ The pairs-trading panel uses deterministic synthetic sample data by default.
 from __future__ import annotations
 
 from pathlib import Path
+import io
+import zipfile
 import os
 from datetime import datetime, timezone
 import requests
@@ -851,11 +853,81 @@ def max_pain_from_chain(chain):
         return np.nan, curve
     return float(curve.loc[curve["Aggregate intrinsic payout"].idxmin(), "Settlement"]), curve
 
+def normalize_nse_index_futures(raw):
+    """Map NSE UDiFF and common legacy F&O bhavcopy headers to one research schema."""
+    aliases = {
+        "Date": ["TRADDT", "BIZDT", "DATE", "TIMESTAMP", "TRADEDATE"],
+        "Symbol": ["TCKRSYMB", "SYMBOL", "UNDERLYING"],
+        "InstrumentType": ["FININSTRMTP", "INSTRUMENT", "INSTRUMENTTYPE", "INSTRUMENT_TYPE"],
+        "Expiry": ["XPRYDT", "EXPIRY_DT", "EXPIRY", "EXPIRYDATE"],
+        "Open": ["OPNPRIC", "OPEN", "OPEN_PRICE"], "High": ["HGHPRIC", "HIGH", "HIGH_PRICE"],
+        "Low": ["LWPRIC", "LOW", "LOW_PRICE"], "Close": ["CLSPRIC", "CLOSE", "CLOSE_PRICE"],
+        "LastPrice": ["LASTPRIC", "LTP", "LAST_PRICE"],
+        "SettlePrice": ["STTLMPRIC", "SETTLE_PR", "SETTLEPRICE", "SETTLEMENT_PRICE"],
+        "Volume": ["TTLTRADGVOL", "CONTRACTS", "VOLUME", "TTL_TRD_QNTY", "NO_OF_CONTRACTS"],
+        "Turnover": ["TTLTRFVAL", "TURNOVER", "TURNOVER_LAKHS"],
+        "OpenInterest": ["OPNINTRST", "OPEN_INT", "OPENINTEREST", "OPEN_INTEREST", "OI"],
+        "ChangeInOI": ["CHNGINOPNINTRST", "CHG_IN_OI", "CHANGE_IN_OI", "CHANGEINOI"],
+        "UnderlyingValue": ["UNDRLYGPRIC", "UNDERLYING_VALUE", "UNDERLYINGVALUE"]
+    }
+    source = raw.copy()
+    source.columns = [str(c).replace("\ufeff", "").strip() for c in source.columns]
+    lookup = {''.join(ch for ch in str(c).upper() if ch.isalnum()): c for c in source.columns}
+    rename = {}
+    for target, candidates in aliases.items():
+        for candidate in candidates:
+            key = ''.join(ch for ch in candidate.upper() if ch.isalnum())
+            if key in lookup:
+                rename[lookup[key]] = target
+                break
+    frame = source.rename(columns=rename).copy()
+    required = ["Date", "Symbol", "Expiry", "Close"]
+    missing = [c for c in required if c not in frame.columns]
+    if missing:
+        raise ValueError("Missing required fields after header mapping: " + ", ".join(missing))
+    if "InstrumentType" in frame.columns:
+        inst = frame["InstrumentType"].astype(str).str.upper().str.replace(r"[^A-Z0-9]", "", regex=True)
+        frame = frame[inst.isin(["FUTIDX", "INDEXFUTURE", "INDEXFUTURES", "FUTUREINDEX"])]
+    frame["Symbol"] = frame["Symbol"].astype(str).str.upper().str.strip()
+    frame = frame[frame["Symbol"].isin(["NIFTY", "BANKNIFTY", "FINNIFTY"])].copy()
+    frame["Date"] = pd.to_datetime(frame["Date"], errors="coerce", dayfirst=True)
+    frame["Expiry"] = pd.to_datetime(frame["Expiry"], errors="coerce", dayfirst=True)
+    numeric = ["Open", "High", "Low", "Close", "LastPrice", "SettlePrice", "Volume",
+               "Turnover", "OpenInterest", "ChangeInOI", "UnderlyingValue"]
+    for col in numeric:
+        if col in frame.columns:
+            frame[col] = pd.to_numeric(frame[col].astype(str).str.replace(",", "", regex=False), errors="coerce")
+    frame = frame.dropna(subset=["Date", "Expiry", "Close"])
+    frame = frame.sort_values(["Symbol", "Expiry", "Date"]).drop_duplicates(
+        ["Symbol", "Expiry", "Date"], keep="last")
+    frame["DaysToExpiry"] = (frame["Expiry"].dt.normalize() - frame["Date"].dt.normalize()).dt.days
+    if {"SettlePrice", "UnderlyingValue"}.issubset(frame.columns):
+        frame["Basis"] = frame["SettlePrice"] - frame["UnderlyingValue"]
+        frame["BasisPct"] = 100 * frame["Basis"] / frame["UnderlyingValue"].replace(0, np.nan)
+    frame["DailyReturnPct"] = frame.groupby(["Symbol", "Expiry"])["Close"].pct_change() * 100
+    return frame.reset_index(drop=True)
+
+
+def read_nse_bhavcopy_upload(uploaded_file):
+    """Read either the official UDiFF ZIP containing CSV or a plain CSV upload."""
+    payload = uploaded_file.getvalue()
+    name = str(getattr(uploaded_file, "name", "")).lower()
+    if name.endswith(".zip") or payload[:2] == b"PK":
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            csv_names = [n for n in archive.namelist() if n.lower().endswith(".csv") and not n.endswith("/")]
+            if not csv_names:
+                raise ValueError("ZIP archive does not contain a CSV file.")
+            chosen = max(csv_names, key=lambda n: archive.getinfo(n).file_size)
+            with archive.open(chosen) as stream:
+                return pd.read_csv(stream, low_memory=False), chosen
+    return pd.read_csv(io.BytesIO(payload), low_memory=False), getattr(uploaded_file, "name", "uploaded.csv")
+
+
 def fo_dashboard():
     st.markdown('<div class="section-kicker">05 / derivatives analytics</div>', unsafe_allow_html=True)
     st.subheader("Futures & options intelligence")
     st.caption("Yahoo Finance option-chain snapshots where supported, plus user-supplied NSE derivatives files. This workspace does not imply a licensed or complete NSE feed.")
-    tab_chain, tab_futures, tab_import = st.tabs(["Options chain", "Futures monitor", "NSE data import"])
+    tab_chain, tab_futures, tab_index_futures, tab_import = st.tabs(["Options chain", "Global futures monitor", "NSE index futures · daily", "NSE options import"])
 
     with tab_chain:
         st.markdown("#### Yahoo Finance option chain")
@@ -952,38 +1024,100 @@ def fo_dashboard():
                 st.warning("No futures history returned. Try another contract or refresh later.")
         st.info("Continuous futures symbols are stitched provider series. They do not represent a specific expiry, tradable contract, official settlement, or roll-adjusted strategy P&L.")
 
-    with tab_import:
-        st.markdown("#### Import NSE futures / options data")
-        st.write("Upload a CSV downloaded from an exchange or licensed vendor. The dashboard will analyse only the rows and fields present in your file.")
-        fut_file=st.file_uploader("NSE futures CSV",type=["csv"],key="nse_fut_upload")
-        opt_file=st.file_uploader("NSE options CSV",type=["csv"],key="nse_opt_upload")
-        if fut_file is not None:
+    with tab_index_futures:
+        st.markdown("#### NSE index futures · UDiFF daily bhavcopy")
+        st.caption("Upload the official F&O UDiFF Common Bhavcopy Final ZIP, or its extracted CSV. The parser maps UDiFF fields and common legacy headers, then retains FUTIDX contracts for NIFTY, BANKNIFTY and FINNIFTY.")
+        st.markdown("**Expected source:** NSE All Reports → F&O → UDiFF Common Bhavcopy Final (ZIP).")
+        st.markdown("[Open NSE official derivatives reports](https://www.nseindia.com/all-reports-derivatives)")
+        st.download_button("Download normalized CSV schema template",
+            pd.DataFrame(columns=["Date","Symbol","InstrumentType","Expiry","Open","High","Low","Close",
+                "LastPrice","SettlePrice","Volume","Turnover","OpenInterest","ChangeInOI","UnderlyingValue"]
+            ).to_csv(index=False).encode("utf-8"),
+            file_name="nse_index_futures_normalized_template.csv", mime="text/csv",
+            key="download_index_futures_template")
+        index_file = st.file_uploader("Upload NSE F&O UDiFF ZIP or CSV", type=["zip","csv"], key="nse_index_futures_bhavcopy")
+        if index_file is not None:
             try:
-                fut=pd.read_csv(fut_file)
-                st.write("Futures columns detected:",", ".join(fut.columns))
-                date_col=next((c for c in ["DATE","date","TIMESTAMP","timestamp"] if c in fut),None)
-                symbol_col=next((c for c in ["SYMBOL","symbol","TckrSymb"] if c in fut),None)
-                close_col=next((c for c in ["CLOSE","close","Settle Price","SETTLE_PR"] if c in fut),None)
-                oi_col=next((c for c in ["OPEN_INT","OPENINTEREST","open_interest","OI"] if c in fut),None)
-                vol_col=next((c for c in ["CONTRACTS","VOLUME","volume","TTL_TRD_QNTY"] if c in fut),None)
-                if date_col and close_col:
-                    fut[date_col]=pd.to_datetime(fut[date_col],errors="coerce")
-                    fut[close_col]=pd.to_numeric(fut[close_col],errors="coerce")
-                    fig=px.line(fut.dropna(subset=[date_col,close_col]),x=date_col,y=close_col,
-                                color=symbol_col if symbol_col else None,title="Uploaded NSE futures prices")
-                    st.plotly_chart(polish(fig,340),use_container_width=True)
-                    if oi_col:
-                        fut[oi_col]=pd.to_numeric(fut[oi_col],errors="coerce")
-                        oi_fig=px.line(fut,x=date_col,y=oi_col,color=symbol_col if symbol_col else None,
-                                       title="Futures open interest")
-                        st.plotly_chart(polish(oi_fig,300),use_container_width=True)
-                    if vol_col:
-                        st.caption(f"Volume field detected: {vol_col}")
-                    st.dataframe(fut.head(100),use_container_width=True)
+                raw_index, source_name = read_nse_bhavcopy_upload(index_file)
+                index_fut = normalize_nse_index_futures(raw_index)
+                if index_fut.empty:
+                    st.warning("No NIFTY, BANKNIFTY or FINNIFTY FUTIDX rows were found. Confirm this is the F&O UDiFF bhavcopy.")
+                    st.caption("Raw headers detected: " + ", ".join(map(str, raw_index.columns)))
                 else:
-                    st.warning("Could not identify date and close columns. Keep original NSE headers and check the preview.")
+                    st.success(f"Loaded {len(index_fut):,} index-futures contract-days from {source_name}.")
+                    available_symbols = [x for x in ["NIFTY","BANKNIFTY","FINNIFTY"] if x in index_fut["Symbol"].unique()]
+                    selected_symbols = st.multiselect("Index contracts", available_symbols, default=available_symbols, key="index_fut_symbols")
+                    view = index_fut[index_fut["Symbol"].isin(selected_symbols)].copy()
+                    if view.empty:
+                        st.info("Select at least one index to inspect.")
+                    else:
+                        latest_date = view["Date"].max()
+                        latest = view[view["Date"] == latest_date].copy()
+                        latest_expiries = latest.sort_values("Expiry")
+                        front = view[view["Expiry"] >= view["Date"]].sort_values(["Symbol","Date","Expiry"])
+                        front = front.drop_duplicates(["Symbol","Date"], keep="first")
+                        latest_front = front[front["Date"] == front["Date"].max()]
+                        latest_total_oi = latest["OpenInterest"].sum(min_count=1) if "OpenInterest" in latest else np.nan
+                        latest_total_vol = latest["Volume"].sum(min_count=1) if "Volume" in latest else np.nan
+                        latest_oi_change = latest["ChangeInOI"].sum(min_count=1) if "ChangeInOI" in latest else np.nan
+                        metric_row([
+                            ("LATEST TRADE DATE", latest_date.strftime("%d %b %Y"), f"{len(latest):,} contracts"),
+                            ("FRONT-MONTH CLOSE", f"{latest_front['Close'].mean():,.2f}" if not latest_front.empty else "—", "mean across selected indices"),
+                            ("TOTAL OPEN INTEREST", f"{latest_total_oi:,.0f}" if pd.notna(latest_total_oi) else "—", "contracts, latest date"),
+                            ("TOTAL CONTRACT VOLUME", f"{latest_total_vol:,.0f}" if pd.notna(latest_total_vol) else "—", f"OI change {latest_oi_change:,.0f}" if pd.notna(latest_oi_change) else "OI change unavailable")
+                        ])
+                        left, right = st.columns(2)
+                        with left:
+                            fig = px.line(front, x="Date", y="Close", color="Symbol", title="Front-month index futures · close")
+                            st.plotly_chart(polish(fig, 350), use_container_width=True)
+                        with right:
+                            if "OpenInterest" in view.columns:
+                                oi_daily = view.groupby(["Date","Symbol"], as_index=False)["OpenInterest"].sum(min_count=1)
+                                fig = px.line(oi_daily, x="Date", y="OpenInterest", color="Symbol",
+                                              title="Aggregate open interest · all uploaded expiries")
+                                st.plotly_chart(polish(fig, 350), use_container_width=True)
+                        left, right = st.columns(2)
+                        with left:
+                            if "Volume" in view.columns:
+                                volume_daily = view.groupby(["Date","Symbol"], as_index=False)["Volume"].sum(min_count=1)
+                                fig = px.bar(volume_daily, x="Date", y="Volume", color="Symbol",
+                                             title="Daily traded contracts", barmode="group")
+                                st.plotly_chart(polish(fig, 320), use_container_width=True)
+                        with right:
+                            if "ChangeInOI" in view.columns:
+                                change_daily = view.groupby(["Date","Symbol"], as_index=False)["ChangeInOI"].sum(min_count=1)
+                                fig = px.bar(change_daily, x="Date", y="ChangeInOI", color="Symbol",
+                                             title="Daily change in open interest", barmode="group")
+                                st.plotly_chart(polish(fig, 320), use_container_width=True)
+                        st.markdown("#### Expiry-wise contract snapshot")
+                        display_cols = [c for c in ["Date","Symbol","Expiry","DaysToExpiry","Open","High","Low","Close",
+                            "SettlePrice","UnderlyingValue","Basis","BasisPct","Volume","Turnover","OpenInterest",
+                            "ChangeInOI","DailyReturnPct"] if c in view.columns]
+                        st.dataframe(latest_expiries[display_cols].sort_values(["Symbol","Expiry"]).style.format({
+                            "Open":"{:,.2f}","High":"{:,.2f}","Low":"{:,.2f}","Close":"{:,.2f}",
+                            "SettlePrice":"{:,.2f}","UnderlyingValue":"{:,.2f}","Basis":"{:,.2f}",
+                            "BasisPct":"{:.2f}%","Volume":"{:,.0f}","Turnover":"{:,.2f}",
+                            "OpenInterest":"{:,.0f}","ChangeInOI":"{:,.0f}","DailyReturnPct":"{:.2f}%"
+                        }, na_rep="—"), use_container_width=True, height=360)
+                        if "Basis" in view.columns:
+                            basis_data = view.dropna(subset=["Basis"])
+                            if not basis_data.empty:
+                                fig = px.line(basis_data, x="Date", y="Basis", color="Symbol", line_dash="Expiry",
+                                              title="Futures basis · settlement minus underlying")
+                                st.plotly_chart(polish(fig, 300), use_container_width=True)
+                        st.download_button("Download normalized index futures CSV",
+                            view.to_csv(index=False, float_format="%.2f").encode("utf-8"),
+                            file_name="nse_index_futures_normalized.csv", mime="text/csv",
+                            key="download_normalized_index_futures")
+                        st.caption("Front-month is the nearest listed expiry on or after each trade date. Open interest and volume are contract counts as supplied by the bhavcopy. Basis is calculated only when settlement price and underlying value exist. The front-month series is not back-adjusted; expiry rolls can create gaps. These are end-of-day records, not intraday/tick data.")
             except Exception as exc:
-                st.error(f"Could not parse futures CSV: {exc}")
+                st.error(f"Could not parse NSE index futures bhavcopy: {exc}")
+                st.caption("Upload the F&O UDiFF Common Bhavcopy Final ZIP or extracted CSV. The template download shows normalized column names accepted by the dashboard.")
+
+    with tab_import:
+        st.markdown("#### Import NSE options data")
+        st.write("Upload an NSE options CSV downloaded from an exchange or licensed vendor. For index futures, use the dedicated NSE index futures · daily tab.")
+        opt_file=st.file_uploader("NSE options CSV",type=["csv"],key="nse_opt_upload")
         if opt_file is not None:
             try:
                 opt=pd.read_csv(opt_file)
@@ -1019,7 +1153,7 @@ def fo_dashboard():
                     st.warning("Options file needs strike, option type (CE/PE or CALL/PUT), and open interest columns.")
             except Exception as exc:
                 st.error(f"Could not parse options CSV: {exc}")
-        st.caption("For NSE bhavcopy uploads, retain the original headers. Common fields such as SYMBOL, EXPIRY_DT, STRIKE_PR, OPTION_TYP, OPEN_INT, CONTRACTS and CLOSE are recognised. Validate the exchange file format before interpreting the output.")
+        st.caption("The dedicated index-futures importer handles UDiFF F&O bhavcopy ZIP/CSV and legacy futures headers. This tab remains for options files.")
 
 
 
