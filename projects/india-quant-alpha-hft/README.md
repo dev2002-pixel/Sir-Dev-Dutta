@@ -5,7 +5,7 @@ A reproducible research project connecting:
 - **MF796 Computational Methods:** numerical estimation, vectorized calculations and reproducible research workflow.
 - **MF821 High-Frequency Trading:** simplified order-book execution, spread, displayed depth, market impact and order-flow imbalance.
 - **NSE × Reliance market impact:** Reliance Industries' co-movement with NIFTY 50, NIFTY Bank and NIFTY Energy; HAC regressions, lead-lag tests, event studies and weight-based NIFTY contribution estimates.
-- **Interactive trading dashboard:** dark institutional-style Streamlit terminal with Plotly charts for strategy signals, equity, drawdown, market returns, rolling correlations, return relationships and lead-lag sensitivity.
+- **Interactive trading dashboard:** dark institutional-style Streamlit terminal with strategy signals, equity/drawdown, auto-refreshing intraday market pulse, rolling correlations, return relationships, lead-lag sensitivity, portfolio construction, VaR/CVaR, rolling volatility, correlation analysis and stress testing.
 
 > **Data note:** the included pairs strategy uses deterministic synthetic sample data. The NSE/Reliance dashboard downloads Yahoo Finance adjusted-price proxies. Neither source is official exchange-grade tick data or evidence of a profitable strategy.
 
@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has two workspaces:
+The dashboard has three workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -60,6 +60,17 @@ The market workspace uses Yahoo Finance symbols as research proxies:
 - NIFTY 50: `^NSEI`
 - NIFTY Bank: `^NSEBANK`
 - NIFTY Energy: `^CNXENERGY` (may not be available from the provider)
+
+
+### 3. Portfolio & Risk Lab
+- Select market proxies and interactively allocate long-only portfolio weights (normalised to 100%)
+- Portfolio growth, drawdown and rolling annualised volatility
+- Historical VaR, CVaR and normal-parametric VaR at selectable confidence levels
+- Sharpe ratio with adjustable annual risk-free rate and descriptive beta versus NIFTY 50
+- Constituent correlation matrix and portfolio-return distribution
+- Editable per-asset shock scenarios, illustrative capital-based P&L and downloadable risk/weight CSVs
+
+Risk estimates are historical, sample-dependent and not forecasts. Parametric VaR assumes normally distributed returns; the simple shock model is linear and does not reprice options, liquidity or market impact. The portfolio lab uses Yahoo Finance adjusted-price proxies, not licensed exchange data.
 
 ## Run the econometric analysis to CSV
 
