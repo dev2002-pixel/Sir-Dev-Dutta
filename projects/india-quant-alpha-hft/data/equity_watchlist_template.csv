@@ -1,0 +1,11 @@
+name,ticker,market,sector,currency,notes
+RELIANCE,RELIANCE.NS,India,Energy,INR,NSE-listed equity
+TCS,TCS.NS,India,Information Technology,INR,NSE-listed equity
+INFOSYS,INFY.NS,India,Information Technology,INR,NSE-listed equity
+HDFC_BANK,HDFCBANK.NS,India,Financials,INR,NSE-listed equity
+ICICI_BANK,ICICIBANK.NS,India,Financials,INR,NSE-listed equity
+APPLE,AAPL,USA,Technology,USD,NASDAQ-listed equity
+MICROSOFT,MSFT,USA,Technology,USD,NASDAQ-listed equity
+NVIDIA,NVDA,USA,Semiconductors,USD,NASDAQ-listed equity
+AMAZON,AMZN,USA,Consumer Discretionary,USD,NASDAQ-listed equity
+ALPHABET,GOOGL,USA,Communication Services,USD,NASDAQ-listed equity
