@@ -3,4 +3,6 @@ pandas>=2.0
 matplotlib>=3.7
 statsmodels>=0.14
 yfinance>=0.2.40
+plotly>=5.22
+streamlit>=1.36
 pytest>=7.0
