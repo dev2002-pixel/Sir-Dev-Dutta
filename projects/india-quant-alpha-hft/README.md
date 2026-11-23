@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has three workspaces:
+The dashboard has four workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -72,6 +72,14 @@ The market workspace uses Yahoo Finance symbols as research proxies:
 
 Risk estimates are historical, sample-dependent and not forecasts. Parametric VaR assumes normally distributed returns; the simple shock model is linear and does not reprice options, liquidity or market impact. The portfolio lab uses Yahoo Finance adjusted-price proxies, not licensed exchange data.
 
+### 4. Multi-Asset Data Explorer
+Selectable daily price history for a 23-instrument research universe:
+- **Indian equities:** Reliance, TCS, Infosys, HDFC Bank, ICICI Bank, SBI, Axis Bank, Kotak Bank, L&T, ITC, Hindustan Unilever, Bharti Airtel, Tata Motors, Maruti and Sun Pharma.
+- **Indian indices / volatility:** NIFTY 50, Bank NIFTY, NIFTY Energy and India VIX.
+- **Cross-asset proxies:** USD/INR, Brent crude, WTI crude and gold.
+
+Interactive views include latest available price/session move cards, rebased performance, daily-return distributions, return correlation heatmaps, rolling pairwise correlation, observation coverage/missingness and downloadable price/return CSV files. Instruments are fetched only when selected. Provider symbols may be unavailable or return incomplete history; missing observations are retained rather than manufactured.
+
 ## Run the econometric analysis to CSV
 
 ~~~bash
@@ -99,7 +107,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive two-workspace trading dashboard
+- `dashboard_app.py` — interactive four-workspace trading dashboard
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
 - `nse_reliance_analysis.py` — NSE/Reliance market-linkage research
