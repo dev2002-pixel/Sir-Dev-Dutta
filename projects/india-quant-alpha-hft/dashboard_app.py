@@ -21,6 +21,7 @@ from plotly.subplots import make_subplots
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
+from stochastic_astro_lab import stochastic_astro_dashboard
 
 st.set_page_config(page_title="India Quant Desk", page_icon="📈", layout="wide")
 
@@ -1283,7 +1284,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
@@ -1297,6 +1298,8 @@ elif page == "Multi-Asset Data Explorer":
     data_explorer_dashboard()
 elif page == "Futures & Options":
     fo_dashboard()
+elif page == "Stochastic Calculus & Astro Lab":
+    stochastic_astro_dashboard()
 else:
     pipeline_monitor_dashboard()
 st.markdown("---")
