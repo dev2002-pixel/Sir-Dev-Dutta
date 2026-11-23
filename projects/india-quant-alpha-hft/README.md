@@ -1,6 +1,6 @@
-# Indian Equity & Index Futures: Quantitative Alpha Research and HFT Simulator
+# Global Quant Desk: India (INR) & United States (USD) Quantitative Research
 
-A reproducible research project connecting:
+A reproducible multi-market research project connecting Indian rupee-denominated NSE markets and US dollar-denominated equity, ETF, options and futures markets. The dashboard keeps the two currency universes separate.\n\nA reproducible research project connecting:
 - **MF840 Financial Econometrics:** OLS hedge-ratio estimation, Engle-Granger cointegration diagnostics, spread construction and z-score signals.
 - **MF796 Computational Methods:** numerical estimation, vectorized calculations and reproducible research workflow.
 - **MF821 High-Frequency Trading:** simplified order-book execution, spread, displayed depth, market impact and order-flow imbalance.
