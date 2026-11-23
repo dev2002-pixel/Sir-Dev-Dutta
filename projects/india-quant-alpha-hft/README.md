@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has five workspaces:
+The dashboard has six workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -89,6 +89,24 @@ Interactive views include latest available price/session move cards, rebased per
 - NSE options CSV import with strike-level CE/PE open-interest analysis and downloadable cleaned data
 
 **Critical data limitation:** Yahoo Finance does not reliably expose complete NSE stock/index futures and options chains. NSE option-chain availability through Yahoo may be empty for Indian underlyings; use the NSE data import tab with an exchange or licensed-vendor CSV for actual NSE derivatives. Yahoo continuous futures tickers are stitched global proxy series, not specific NSE expiries or executable contracts. Uploaded data is analysed as supplied and should be checked against the original exchange file. PCR and max pain are descriptive statistics, not trading signals.
+
+### 6. NSE · BSE · Yahoo data pipelines
+- Dedicated pipeline control room with independent NSE, BSE and Yahoo connection status
+- Yahoo Finance reference-series fetcher with symbol, interval and lookback controls
+- Configurable NSE and BSE REST/CSV feed adapters for endpoints supplied by the user under their exchange or vendor agreement
+- Feed response preview and CSV export; no silent substitution between data vendors
+- Credentials are read from environment variables or Streamlit secrets, never hard-coded
+
+Configure these Streamlit secrets (use the endpoint and authentication format provided by your licensed vendor):
+```toml
+NSE_FEED_URL = "https://your-approved-nse-vendor-endpoint"
+NSE_API_TOKEN = "your-token"
+BSE_FEED_URL = "https://your-approved-bse-vendor-endpoint"
+BSE_API_TOKEN = "your-token"
+```
+The generic adapter currently expects an HTTP GET response containing JSON records or CSV. A vendor-specific adapter may be needed for WebSocket, OAuth, signed requests, SFTP, binary snapshots or a different response schema. Do not paste credentials into GitHub or chat.
+
+**Operational distinction:** Streamlit's periodic reruns are not an always-on ingestion service. For durable continuous pipelines, deploy a separate worker, persist incoming licensed data to a database, and let Streamlit query that store. Yahoo Finance is a research proxy and may be delayed, rate-limited or incomplete. NSE and BSE data access, display and redistribution are governed by exchange/vendor agreements; configure only a feed you are entitled to use.
 
 ## Run the econometric analysis to CSV
 
