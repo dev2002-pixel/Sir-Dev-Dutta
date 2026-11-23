@@ -87,8 +87,33 @@ Interactive views include latest available price/session move cards, rebased per
 - Calls and puts table with strike, last price, bid/ask, volume, open interest and implied volatility (when returned)
 - Call OI, put OI, put/call OI ratio, strike-level OI chart and an OI-based expiry max-pain estimate
 - Yahoo continuous futures proxy monitor for global contracts such as Brent, WTI, gold, silver, natural gas, E-mini S&P 500 and 10-year Treasury note
-- NSE futures CSV import with price and open-interest visualisation
+- **NSE index-futures daily bhavcopy importer:** accepts the official UDiFF Common Bhavcopy Final ZIP (or extracted CSV) and common legacy futures CSV headers; extracts and filters `FUTIDX` contracts for NIFTY, BANKNIFTY and FINNIFTY
+- Header mapping into a normalized schema: `Date, Symbol, InstrumentType, Expiry, Open, High, Low, Close, LastPrice, SettlePrice, Volume, Turnover, OpenInterest, ChangeInOI, UnderlyingValue`
+- Daily front-month close series, expiry-wise contract snapshots, aggregate volume / open-interest / change-in-OI charts, days-to-expiry, daily contract returns, and settlement-minus-underlying basis when source fields exist
+- Normalized CSV template download and cleaned futures dataset export
 - NSE options CSV import with strike-level CE/PE open-interest analysis and downloadable cleaned data
+
+
+#### NSE index futures daily bhavcopy workflow
+
+Use the NSE website's **All Reports → F&O → UDiFF Common Bhavcopy Final (ZIP)** report. Upload the ZIP directly in the dashboard's **Futures & Options → NSE index futures · daily** tab, or upload the extracted CSV. The importer maps UDiFF fields and common legacy headers, filters index-futures instrument type `FUTIDX`, and retains NIFTY, BANKNIFTY and FINNIFTY. It also provides a normalized CSV schema template for vendor files.
+
+| Normalized field | UDiFF header commonly mapped | Meaning |
+|---|---|---|
+| Date | `TradDt` / `BizDt` | Trade / business date |
+| Symbol | `TckrSymb` | NIFTY, BANKNIFTY or FINNIFTY |
+| InstrumentType | `FinInstrmTp` | Index futures filter: `FUTIDX` |
+| Expiry | `XpryDt` | Contract expiry |
+| Open / High / Low / Close | `OpnPric` / `HghPric` / `LwPric` / `ClsPric` | Daily contract OHLC |
+| SettlePrice | `SttlmPric` | Daily settlement price |
+| Volume | `TtlTradgVol` | Traded contract volume |
+| Turnover | `TtlTrfVal` | Reported turnover field |
+| OpenInterest / ChangeInOI | `OpnIntrst` / `ChngInOpnIntrst` | End-of-day OI and daily OI change |
+| UnderlyingValue | `UndrlygPric` | Underlying index value, where present |
+
+The importer calculates days to expiry and contract-level daily close returns. It identifies the front month as the nearest expiry on or after each trade date. This front-month series is **not back-adjusted**: expiry rolls can create discontinuities. Basis is calculated as settlement price minus underlying value only when both fields are present. Daily bhavcopy data is end-of-day data, not tick or intraday data. Verify source headers and units against the exchange's current UDiFF catalogue before vendor-specific use.
+
+Official source: [NSE All Reports – Derivatives](https://www.nseindia.com/all-reports-derivatives). NSE identifies the UDiFF Common Bhavcopy Final ZIP as the current F&O bhavcopy report and marks the older common bhavcopy CSV as discontinued.
 
 **Critical data limitation:** Yahoo Finance does not reliably expose complete NSE stock/index futures and options chains. NSE option-chain availability through Yahoo may be empty for Indian underlyings; use the NSE data import tab with an exchange or licensed-vendor CSV for actual NSE derivatives. Yahoo continuous futures tickers are stitched global proxy series, not specific NSE expiries or executable contracts. Uploaded data is analysed as supplied and should be checked against the original exchange file. PCR and max pain are descriptive statistics, not trading signals.
 
@@ -137,7 +162,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive five-workspace trading dashboard
+- `dashboard_app.py` — interactive six-workspace trading dashboard
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
 - `nse_reliance_analysis.py` — NSE/Reliance market-linkage research
