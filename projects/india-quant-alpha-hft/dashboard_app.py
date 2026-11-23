@@ -112,8 +112,27 @@ def download_market(start_date, end_date):
 def pairs_dashboard():
     st.markdown('<div class="section-kicker">01 / strategy research</div>', unsafe_allow_html=True)
     st.subheader("Statistical arbitrage · spread & execution monitor")
-    st.caption("A reproducible pairs-trading sandbox. The default pair is deterministic synthetic data, not live orders or a deployed strategy.")
+    st.caption(f"Data source: {data_source}. Upload a CSV with date, asset_a and asset_b columns to run the same research workflow on your own historical pair. No live orders are sent.")
+    uploaded = st.sidebar.file_uploader("Optional pairs CSV", type=["csv"], help="Required columns: date, asset_a, asset_b")
+    data_source = "Deterministic synthetic sample"
     data = synthetic_pair_data()
+    if uploaded is not None:
+        try:
+            candidate = pd.read_csv(uploaded, parse_dates=["date"])
+            required = {"date", "asset_a", "asset_b"}
+            if not required.issubset(candidate.columns):
+                st.sidebar.error("CSV needs date, asset_a and asset_b columns.")
+            else:
+                candidate = candidate[["date", "asset_a", "asset_b"]].dropna().set_index("date").sort_index()
+                candidate = candidate.apply(pd.to_numeric, errors="coerce").dropna()
+                candidate = candidate[(candidate > 0).all(axis=1)]
+                if len(candidate) >= 80:
+                    data = candidate
+                    data_source = "User-uploaded historical data"
+                else:
+                    st.sidebar.warning("Need at least 80 valid positive price rows; using sample data.")
+        except Exception as exc:
+            st.sidebar.error(f"Could not read CSV: {exc}")
     left, right = st.columns([1, 3])
     with left:
         lookback = st.slider("Z-score lookback", 20, 180, 60, 5)
@@ -188,6 +207,12 @@ def pairs_dashboard():
                                line=dict(color=RED, width=1.5), fill="tozeroy"))
         f.update_layout(title="Underwater curve", yaxis_title="Drawdown (%)")
         st.plotly_chart(polish(f), use_container_width=True)
+    cost_bps = (turnover * fee_bps).cumsum()
+    cost_fig = go.Figure()
+    cost_fig.add_trace(go.Scatter(x=cost_bps.index, y=cost_bps, name="Cumulative turnover cost",
+                                  line=dict(color=ORANGE, width=1.8), fill="tozeroy"))
+    cost_fig.update_layout(title="Cumulative modelled turnover cost", yaxis_title="Basis points")
+    st.plotly_chart(polish(cost_fig, 280), use_container_width=True)
     st.markdown("**Execution lens**")
     st.caption("This panel models turnover costs on a daily spread series. It does not model queue priority, partial fills, latency, exchange fees, taxes, or market impact from order-book depth. Treat all metrics as illustrative, not a performance claim.")
 
