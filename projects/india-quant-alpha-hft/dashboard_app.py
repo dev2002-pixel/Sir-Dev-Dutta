@@ -23,7 +23,7 @@ from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 from stochastic_astro_lab import stochastic_astro_dashboard
 
-st.set_page_config(page_title="India Quant Desk", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Global Quant Desk · INR & USD", page_icon="📈", layout="wide")
 
 BG = "#0B1220"
 PANEL = "#111C2F"
@@ -1636,13 +1636,13 @@ def pipeline_monitor_dashboard():
 
 st.markdown("""
 <div class="hero">
-  <div class="eyebrow">DEV DUTTA · QUANTITATIVE RESEARCH LAB</div>
-  <h1>INDIA QUANT DESK</h1>
-  <p>Systematic strategies · execution research · NSE market structure · Reliance market linkage</p>
+  <div class="eyebrow">DEV DUTTA · GLOBAL QUANTITATIVE RESEARCH LAB</div>
+  <h1>GLOBAL QUANT DESK</h1>
+  <p>India markets · INR | US markets · USD | Systematic strategies · execution research · derivatives & risk</p>
 </div>
 """, unsafe_allow_html=True)
-st.sidebar.markdown("## INDIA QUANT DESK")
-st.sidebar.caption("Research terminal · educational build")
+st.sidebar.markdown("## GLOBAL QUANT DESK")
+st.sidebar.caption("India · INR  /  United States · USD")
 page = st.sidebar.radio("Workspace", ["Trading & HFT", "India Markets · INR", "US Markets · USD", "India Equities · INR", "US Equities · USD", "India Portfolio & Risk · INR", "US Portfolio & Risk · USD", "India Multi-Asset · INR", "US Multi-Asset · USD", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
