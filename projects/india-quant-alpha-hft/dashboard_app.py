@@ -100,26 +100,62 @@ MARKET_UNIVERSE = {
     "WTI_CRUDE": "CL=F", "GOLD": "GC=F"
 }
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def download_market(start_date, end_date, selected_labels=None):
+    """Bulk-download Yahoo Finance adjusted closes; tolerate yfinance column layouts."""
     labels = list(selected_labels) if selected_labels else ["RELIANCE", "NIFTY50", "BANKNIFTY", "NIFTYENERGY"]
     symbols = {label: MARKET_UNIVERSE[label] for label in labels if label in MARKET_UNIVERSE}
-    series = {}
-    for label, ticker in symbols.items():
-        try:
-            raw = yf.download(ticker, start=start_date, end=end_date,
-                              auto_adjust=True, progress=False, threads=False)
-            if raw.empty:
-                continue
-            close = raw["Close"]
-            if isinstance(close, pd.DataFrame):
-                close = close.iloc[:, 0]
-            series[label] = close.rename(label)
-        except Exception:
-            continue
-    if not series:
+    if not symbols:
         return pd.DataFrame()
-    return pd.concat(series.values(), axis=1).sort_index().dropna(how="all")
+    try:
+        raw = yf.download(
+            tickers=list(symbols.values()), start=start_date, end=end_date,
+            auto_adjust=True, progress=False, threads=True, group_by="column",
+            actions=False
+        )
+        if raw is None or raw.empty:
+            return pd.DataFrame()
+        close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw[["Close"]]
+        if isinstance(close, pd.Series):
+            close = close.to_frame(name=list(symbols)[0])
+        elif isinstance(close.columns, pd.MultiIndex):
+            close.columns = close.columns.get_level_values(-1)
+        reverse = {ticker: label for label, ticker in symbols.items()}
+        close = close.rename(columns=reverse)
+        # Single-ticker Yahoo responses may use the ticker as the sole column.
+        if len(close.columns) == 1 and close.columns[0] not in symbols:
+            close.columns = [next(iter(symbols))]
+        close = close[[col for col in symbols if col in close.columns]]
+        close = close.apply(pd.to_numeric, errors="coerce")
+        close.index = pd.to_datetime(close.index)
+        if close.index.tz is not None:
+            close.index = close.index.tz_localize(None)
+        return close.sort_index().dropna(how="all")
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=900, show_spinner=False)
+def download_ohlcv(label, period_start, period_end):
+    """Download one Yahoo Finance instrument's adjusted OHLCV history for charting."""
+    ticker = MARKET_UNIVERSE.get(label)
+    if not ticker:
+        return pd.DataFrame()
+    try:
+        raw = yf.download(ticker, start=period_start, end=period_end,
+                          auto_adjust=True, progress=False, threads=False)
+        if raw is None or raw.empty:
+            return pd.DataFrame()
+        if isinstance(raw.columns, pd.MultiIndex):
+            raw.columns = raw.columns.get_level_values(0)
+        keep = [col for col in ["Open", "High", "Low", "Close", "Volume"] if col in raw.columns]
+        frame = raw[keep].copy()
+        frame.index = pd.to_datetime(frame.index)
+        if frame.index.tz is not None:
+            frame.index = frame.index.tz_localize(None)
+        return frame.sort_index().dropna(subset=["Close"])
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -383,83 +419,152 @@ def risk_dashboard():
 
 def data_explorer_dashboard():
     st.markdown('<div class="section-kicker">04 / cross-asset data terminal</div>', unsafe_allow_html=True)
-    st.subheader("India & global markets · multi-asset data explorer")
-    st.caption("Select equities, indices, FX, volatility and commodity proxies. Historical prices are fetched on demand; intraday availability varies by instrument.")
-    c1,c2,c3=st.columns([1.2,1,1])
-    with c1:
-        chosen=st.multiselect("Choose instruments",list(MARKET_UNIVERSE),
-            default=["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"])
-    with c2:
-        start=st.date_input("History from",value=pd.Timestamp("2021-01-01").date(),key="explorer_start")
-    with c3:
-        end=st.date_input("History to (exclusive)",value=pd.Timestamp.today().date()+pd.Timedelta(days=1),key="explorer_end")
+    st.subheader("Market data & analytics")
+    st.caption("Yahoo Finance · adjusted daily prices · fetched on demand and cached for 15 minutes.")
+    with st.container(border=True):
+        c1,c2,c3=st.columns([1.4,1,1])
+        with c1:
+            chosen=st.multiselect("Instruments",list(MARKET_UNIVERSE),
+                default=["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"],key="explorer_assets")
+        with c2:
+            start=st.date_input("From",value=pd.Timestamp("2021-01-01").date(),key="explorer_start")
+        with c3:
+            end=st.date_input("To (exclusive)",value=pd.Timestamp.today().date()+pd.Timedelta(days=1),key="explorer_end")
+        refresh=st.button("↻ Refresh Yahoo Finance data",type="primary",use_container_width=True)
+    if start >= end:
+        st.error("The start date must be earlier than the end date.")
+        return
     if not chosen:
         st.info("Choose at least one instrument.")
         return
-    if st.button("Fetch selected market data",type="primary"):
+    if refresh:
         download_market.clear()
-    with st.spinner("Fetching selected instruments from Yahoo Finance…"):
+        download_ohlcv.clear()
+    with st.spinner("Requesting market data from Yahoo Finance…"):
         prices=download_market(str(start),str(end),chosen)
     if prices.empty:
-        st.warning("No prices were returned. Some symbols may be unavailable or unsupported by the data provider.")
+        st.warning("Yahoo Finance returned no data for this selection. Check ticker availability, date range or provider rate limits.")
         return
+    available=list(prices.columns)
+    if not available:
+        st.warning("No selected instruments returned valid price history.")
+        return
+    prices=prices[available].sort_index()
     returns=np.log(prices.where(prices>0)).diff()
-    valid_returns=returns.dropna(how="all")
-    if valid_returns.empty:
-        st.warning("The selected instruments do not have enough overlapping observations.")
-        return
     latest=prices.ffill().iloc[-1]
-    previous=prices.ffill().iloc[-2] if len(prices)>1 else latest
-    cols=st.columns(min(4,len(prices.columns)))
-    for i,name in enumerate(prices.columns):
-        with cols[i%len(cols)]:
-            change=(latest[name]/previous[name]-1)*100 if pd.notna(previous[name]) and previous[name]!=0 else np.nan
-            st.metric(name,f"{latest[name]:,.2f}" if pd.notna(latest[name]) else "—",
-                      f"{change:+.2f}% latest session" if np.isfinite(change) else "—")
-    tab1,tab2,tab3=st.tabs(["Price & returns","Cross-asset relationships","Data quality & export"])
-    with tab1:
-        indexed=prices.div(prices.ffill().bfill().iloc[0]).mul(100)
+    prev=prices.ffill().iloc[-2] if len(prices)>1 else latest
+    st.markdown("#### Latest available observations")
+    metric_cols=st.columns(min(4,len(available)))
+    for i,name in enumerate(available):
+        with metric_cols[i%len(metric_cols)]:
+            change=(latest[name]/prev[name]-1)*100 if pd.notna(prev[name]) and prev[name]!=0 else np.nan
+            metric_cols[i%len(metric_cols)].metric(name,f"{latest[name]:,.2f}" if pd.notna(latest[name]) else "—",
+                f"{change:+.2f}% · last observation" if np.isfinite(change) else "—")
+    last_stamp=prices.dropna(how="all").index[-1]
+    st.caption(f"Last common dataset timestamp: {last_stamp:%Y-%m-%d} · Retrieved from Yahoo Finance on app request. Prices are not guaranteed live.")
+    tab_price,tab_compare,tab_stats,tab_data=st.tabs(["Price chart","Compare & relationships","Performance & risk","Data & downloads"])
+    with tab_price:
+        left,right=st.columns([1.2,1])
+        with left:
+            chart_asset=st.selectbox("Instrument detail",available,key="detail_asset")
+        with right:
+            chart_style=st.selectbox("Chart type",["Candlestick","Line"],key="detail_chart")
+        detail=download_ohlcv(chart_asset,str(start),str(end))
+        if detail.empty:
+            st.info("OHLC data is unavailable for this instrument. Showing adjusted close instead.")
+            detail=pd.DataFrame({"Close":prices[chart_asset]})
+        ma_fast=st.slider("Fast moving average",5,100,20,5,key="ma_fast")
+        ma_slow=st.slider("Slow moving average",20,250,50,5,key="ma_slow")
         fig=go.Figure()
-        for name in indexed.columns:
-            fig.add_trace(go.Scatter(x=indexed.index,y=indexed[name],name=name,mode="lines"))
-        fig.update_layout(title="Normalised price performance · start = 100",yaxis_title="Indexed level")
-        st.plotly_chart(polish(fig,420),use_container_width=True)
-        selected_return=st.selectbox("Return series for distribution",list(valid_returns.columns))
-        fig=go.Figure()
-        fig.add_trace(go.Histogram(x=valid_returns[selected_return].dropna()*100,nbinsx=50,name=selected_return))
-        fig.update_layout(title=f"{selected_return} daily log-return distribution",xaxis_title="Daily log return (%)",yaxis_title="Frequency")
-        st.plotly_chart(polish(fig,300),use_container_width=True)
-    with tab2:
-        aligned=valid_returns.dropna()
-        if len(aligned)>=3 and len(aligned.columns)>=2:
-            corr=aligned.corr()
-            fig=px.imshow(corr,text_auto=".2f",zmin=-1,zmax=1,color_continuous_scale="RdBu_r",aspect="auto",title="Daily return correlation matrix")
-            fig.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(polish(fig,430),use_container_width=True)
-            rolling_n=st.select_slider("Rolling correlation window",options=[20,40,60,90,120],value=60,key="explorer_roll")
-            pair=st.multiselect("Rolling correlation pair",list(aligned.columns),default=list(aligned.columns[:2]),max_selections=2)
-            if len(pair)==2:
-                rc=aligned[pair[0]].rolling(rolling_n).corr(aligned[pair[1]])
-                fig=go.Figure()
-                fig.add_trace(go.Scatter(x=rc.index,y=rc,name=f"{pair[0]} vs {pair[1]}",line=dict(color=CYAN,width=1.8)))
-                fig.add_hline(y=0,line_color=GRID)
-                fig.update_layout(title=f"{rolling_n}-session rolling correlation",yaxis=dict(range=[-1,1]))
-                st.plotly_chart(polish(fig,290),use_container_width=True)
+        if chart_style=="Candlestick" and {"Open","High","Low","Close"}.issubset(detail.columns):
+            fig.add_trace(go.Candlestick(x=detail.index,open=detail["Open"],high=detail["High"],
+                low=detail["Low"],close=detail["Close"],name=chart_asset))
         else:
-            st.info("Select at least two instruments with overlapping daily returns to view dependence.")
-    with tab3:
+            fig.add_trace(go.Scatter(x=detail.index,y=detail["Close"],name="Adjusted close",
+                line=dict(color=CYAN,width=2)))
+        fig.add_trace(go.Scatter(x=detail.index,y=detail["Close"].rolling(ma_fast).mean(),
+            name=f"SMA {ma_fast}",line=dict(color=ORANGE,width=1.3)))
+        fig.add_trace(go.Scatter(x=detail.index,y=detail["Close"].rolling(ma_slow).mean(),
+            name=f"SMA {ma_slow}",line=dict(color=BLUE,width=1.3)))
+        fig.update_layout(title=f"{chart_asset} · price and moving averages",xaxis_rangeslider_visible=False,
+            yaxis_title="Adjusted price · provider currency")
+        st.plotly_chart(polish(fig,440),use_container_width=True)
+        if "Volume" in detail and detail["Volume"].notna().any():
+            vf=go.Figure(go.Bar(x=detail.index,y=detail["Volume"],name="Volume",marker_color=BLUE))
+            vf.update_layout(title=f"{chart_asset} · reported volume",yaxis_title="Volume")
+            st.plotly_chart(polish(vf,220),use_container_width=True)
+        else:
+            st.caption("Volume is not available for this symbol.")
+    with tab_compare:
+        st.markdown("#### Relative performance")
+        base=prices.dropna(how="all").ffill()
+        rebased=base.div(base.apply(lambda s:s.dropna().iloc[0] if s.notna().any() else np.nan)).mul(100)
+        fig=go.Figure()
+        for name in available:
+            fig.add_trace(go.Scatter(x=rebased.index,y=rebased[name],name=name,mode="lines"))
+        fig.update_layout(title="Growth of 100 · rebased to each instrument's first valid observation",
+            yaxis_title="Indexed value")
+        st.plotly_chart(polish(fig,400),use_container_width=True)
+        aligned=returns[available].dropna()
+        if len(aligned)>=3 and len(available)>=2:
+            corr=aligned.corr()
+            left,right=st.columns(2)
+            with left:
+                heat=px.imshow(corr,text_auto=".2f",zmin=-1,zmax=1,color_continuous_scale="RdBu_r",
+                    aspect="auto",title="Daily return correlation")
+                heat.update_layout(coloraxis_showscale=False)
+                st.plotly_chart(polish(heat,360),use_container_width=True)
+            with right:
+                pair=st.multiselect("Rolling correlation pair",available,default=available[:2],max_selections=2,key="rolling_pair")
+                window=st.select_slider("Rolling window (sessions)",[20,40,60,90,120],value=60,key="rolling_window")
+                if len(pair)==2:
+                    rc=returns[pair[0]].rolling(window).corr(returns[pair[1]])
+                    rf=go.Figure(go.Scatter(x=rc.index,y=rc,name="Rolling correlation",
+                        line=dict(color=CYAN,width=1.8),fill="tozeroy"))
+                    rf.update_layout(title=f"{pair[0]} vs {pair[1]} · {window}-session rolling correlation",
+                        yaxis=dict(range=[-1,1]))
+                    st.plotly_chart(polish(rf,330),use_container_width=True)
+        else:
+            st.info("Select at least two instruments with overlapping return observations for correlation analysis.")
+    with tab_stats:
+        st.markdown("#### Comparable historical statistics")
+        aligned=returns[available].dropna(how="all")
+        rows=[]
+        for name in available:
+            r=returns[name].dropna()
+            if r.empty:
+                continue
+            wealth=np.exp(r.cumsum())
+            dd=wealth/wealth.cummax()-1
+            vol=r.std()*np.sqrt(252)
+            ann_ret=np.exp(r.mean()*252)-1
+            sharpe=(r.mean()*252)/vol if vol>0 else np.nan
+            rows.append({"Instrument":name,"Observations":len(r),"Cumulative return":np.exp(r.sum())-1,
+                "Annualised return*":ann_ret,"Annualised volatility":vol,"Sharpe (RF=0)":sharpe,
+                "Max drawdown":dd.min(),"Worst day":r.min(),"Best day":r.max()})
+        stats=pd.DataFrame(rows).set_index("Instrument")
+        fmt={col:"{:.2%}" for col in ["Cumulative return","Annualised return*","Annualised volatility","Max drawdown","Worst day","Best day"]}
+        fmt["Sharpe (RF=0)"]="{:.2f}"
+        st.dataframe(stats.style.format(fmt),use_container_width=True)
+        fig=px.bar(stats.reset_index(),x="Instrument",y="Annualised volatility",
+            title="Annualised historical volatility · daily log returns × √252")
+        st.plotly_chart(polish(fig,300),use_container_width=True)
+        st.caption("*Annualised return is a geometric extrapolation of the sample mean daily log return. Sharpe shown uses a zero risk-free rate. These are descriptive sample statistics, not forecasts.")
+    with tab_data:
         coverage=pd.DataFrame({
-            "Ticker": [MARKET_UNIVERSE[x] for x in prices.columns],
-            "First observation": [prices[x].first_valid_index() for x in prices.columns],
-            "Last observation": [prices[x].last_valid_index() for x in prices.columns],
-            "Valid prices": [int(prices[x].notna().sum()) for x in prices.columns],
-            "Missing %": [float(prices[x].isna().mean()*100) for x in prices.columns]
+            "Yahoo ticker":[MARKET_UNIVERSE[x] for x in prices.columns],
+            "First valid date":[prices[x].first_valid_index() for x in prices.columns],
+            "Last valid date":[prices[x].last_valid_index() for x in prices.columns],
+            "Valid observations":[int(prices[x].notna().sum()) for x in prices.columns],
+            "Missing %":[float(prices[x].isna().mean()*100) for x in prices.columns]
         },index=prices.columns)
         st.dataframe(coverage.style.format({"Missing %":"{:.1f}%"}),use_container_width=True)
-        st.download_button("Download selected prices CSV",prices.to_csv().encode("utf-8"),"india_quant_selected_prices.csv","text/csv")
-        st.download_button("Download selected returns CSV",valid_returns.to_csv().encode("utf-8"),"india_quant_selected_returns.csv","text/csv")
-        st.caption("Provider: Yahoo Finance via yfinance. Missing values and differing market calendars are retained; no synthetic observations are inserted.")
-    st.caption("Ticker availability, history length, currency and trading calendars differ. Cross-asset comparisons are descriptive; commodity futures, FX and Indian equities are not interchangeable assets.")
+        st.download_button("Download adjusted prices CSV",prices.to_csv().encode("utf-8"),
+            "yahoo_finance_adjusted_prices.csv","text/csv")
+        st.download_button("Download daily log returns CSV",returns.to_csv().encode("utf-8"),
+            "yahoo_finance_daily_log_returns.csv","text/csv")
+        st.caption("Provider: Yahoo Finance via yfinance. Different market calendars, currencies, trading hours and symbol histories are not harmonised. No missing prices are synthetically filled.")
+    st.caption("Research use only. Yahoo Finance is a convenience data source, not a licensed exchange feed. Verify timestamps, corporate actions and contract specifications before using results for trading.")
 
 def market_dashboard():
     st.markdown('<div class="section-kicker">02 / India market intelligence</div>', unsafe_allow_html=True)
