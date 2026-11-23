@@ -412,11 +412,11 @@ def risk_dashboard():
                 "Current weight (%)":"{:.2f}", "New money (INR)":"₹{:,.2f}",
                 "New money allocation (%)":"{:.2f}", "Post-investment value (INR)":"₹{:,.2f}",
                 "Post-investment weight (%)":"{:.2f}", "Weight change (pp)":"{:+.2f}",
-                "Latest price (provider units)":"{:,.2f}", "Indicative added units":"{:,.3f}"
+                "Latest price (provider units)":"{:,.2f}", "Indicative added units":"{:,.2f}"
             }, na_rep="—"), use_container_width=True)
             st.markdown("**Estimated portfolio-level effect**")
             metric_row([
-                ("TOTAL CAPITAL AFTER INVESTMENT", f"₹{existing_capital + new_money:,.0f}", f"New contribution ₹{new_money:,.0f}"),
+                ("TOTAL CAPITAL AFTER INVESTMENT", f"₹{existing_capital + new_money:,.2f}", f"New contribution ₹{new_money:,.2f}"),
                 ("ANNUALISED VOLATILITY", f"{post_vol:.2%}", f"{post_vol-old_vol:+.2%} vs current mix"),
                 ("HISTORICAL 95% VaR", f"{post_var:.2%}", f"{post_var-old_var:+.2%} vs current mix"),
                 ("HISTORICAL ANNUALISED RETURN", f"{post_ann_return:.2%}", f"{post_ann_return-old_ann_return:+.2%} vs current mix"),
@@ -429,7 +429,7 @@ def risk_dashboard():
             st.plotly_chart(polish(fig_alloc, 340), use_container_width=True)
             st.download_button(
                 "Download INR contribution analysis (CSV)",
-                calc_table.to_csv(index=True).encode("utf-8"),
+                calc_table.round(2).to_csv(index=True).encode("utf-8"),
                 file_name="india_quant_inr_contribution_analysis.csv", mime="text/csv"
             )
             st.caption("Indicative units = rupee allocation ÷ latest downloaded price. This is a sizing estimate, not an order: it excludes lot sizes, fractional-share restrictions, brokerage, taxes, slippage, liquidity, cash drag and price movement. Historical volatility, VaR and return differences are sample estimates, not forecasts. Index/FX/commodity proxies in the wider risk portfolio are not included as investable stocks in this calculator.")
