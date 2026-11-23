@@ -700,6 +700,225 @@ def market_dashboard():
     st.caption("Correlation and beta describe co-movement, not causation. A lagged coefficient is not automatically tradable alpha. Mechanical NIFTY contribution requires date-matched official free-float constituent weights; no historical weight is invented in this dashboard.")
     st.dataframe(corr.style.format("{:.3f}"), use_container_width=True)
 
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def yahoo_option_expiries(symbol):
+    """Return expiries Yahoo exposes for a ticker; availability is provider-dependent."""
+    try:
+        return list(yf.Ticker(symbol).options or [])
+    except Exception:
+        return []
+
+@st.cache_data(ttl=120, show_spinner=False)
+def yahoo_option_chain(symbol, expiry):
+    """Fetch one Yahoo option expiry. This is not an NSE-certified option-chain feed."""
+    try:
+        ticker = yf.Ticker(symbol)
+        chain = ticker.option_chain(expiry)
+        calls, puts = chain.calls.copy(), chain.puts.copy()
+        if not calls.empty:
+            calls["option_type"] = "CALL"
+        if not puts.empty:
+            puts["option_type"] = "PUT"
+        return pd.concat([calls, puts], ignore_index=True)
+    except Exception:
+        return pd.DataFrame()
+
+def max_pain_from_chain(chain):
+    """Calculate expiry max-pain estimate from listed OI and strikes."""
+    required = {"strike", "openInterest", "option_type"}
+    if chain.empty or not required.issubset(chain.columns):
+        return np.nan, pd.DataFrame()
+    work = chain[list(required)].copy()
+    work["strike"] = pd.to_numeric(work["strike"], errors="coerce")
+    work["openInterest"] = pd.to_numeric(work["openInterest"], errors="coerce").fillna(0)
+    work = work.dropna(subset=["strike"])
+    strikes = np.sort(work["strike"].unique())
+    rows = []
+    for settle in strikes:
+        call_oi = work.loc[work["option_type"] == "CALL", "openInterest"]
+        put_oi = work.loc[work["option_type"] == "PUT", "openInterest"]
+        call_strikes = work.loc[work["option_type"] == "CALL", "strike"]
+        put_strikes = work.loc[work["option_type"] == "PUT", "strike"]
+        payout = ((np.maximum(settle-call_strikes, 0) * call_oi).sum()
+                  + (np.maximum(put_strikes-settle, 0) * put_oi).sum())
+        rows.append({"Settlement": settle, "Aggregate intrinsic payout": payout})
+    curve = pd.DataFrame(rows)
+    if curve.empty:
+        return np.nan, curve
+    return float(curve.loc[curve["Aggregate intrinsic payout"].idxmin(), "Settlement"]), curve
+
+def fo_dashboard():
+    st.markdown('<div class="section-kicker">05 / derivatives analytics</div>', unsafe_allow_html=True)
+    st.subheader("Futures & options intelligence")
+    st.caption("Yahoo Finance option-chain snapshots where supported, plus user-supplied NSE derivatives files. This workspace does not imply a licensed or complete NSE feed.")
+    tab_chain, tab_futures, tab_import = st.tabs(["Options chain", "Futures monitor", "NSE data import"])
+
+    with tab_chain:
+        st.markdown("#### Yahoo Finance option chain")
+        fo_underlyings = {
+            "Reliance": "RELIANCE.NS", "TCS": "TCS.NS", "Infosys": "INFY.NS",
+            "HDFC Bank": "HDFCBANK.NS", "ICICI Bank": "ICICIBANK.NS",
+            "NIFTY 50": "^NSEI", "Bank NIFTY": "^NSEBANK",
+            "Apple (US example)": "AAPL", "SPY (US example)": "SPY"
+        }
+        left, right = st.columns([1, 1])
+        with left:
+            label = st.selectbox("Underlying", list(fo_underlyings), index=0)
+        symbol = fo_underlyings[label]
+        with right:
+            expiries = yahoo_option_expiries(symbol)
+            expiry = st.selectbox("Expiration", expiries) if expiries else None
+        if not expiries:
+            st.warning(f"Yahoo Finance does not currently expose an option chain for {label} ({symbol}). This is common for NSE symbols. Upload an NSE option-chain / bhavcopy CSV in the NSE data import tab.")
+        else:
+            if st.button("Refresh option chain", key="refresh_yahoo_chain"):
+                yahoo_option_chain.clear()
+            chain = yahoo_option_chain(symbol, expiry)
+            if chain.empty:
+                st.warning("The provider returned an empty chain for this expiry. Try another expiry or upload an exchange file.")
+            else:
+                for col in ["openInterest", "volume", "impliedVolatility", "strike", "lastPrice", "bid", "ask"]:
+                    if col not in chain:
+                        chain[col] = np.nan
+                calls_oi = pd.to_numeric(chain.loc[chain.option_type=="CALL","openInterest"], errors="coerce").sum()
+                puts_oi = pd.to_numeric(chain.loc[chain.option_type=="PUT","openInterest"], errors="coerce").sum()
+                pcr = puts_oi/calls_oi if calls_oi else np.nan
+                pain, pain_curve = max_pain_from_chain(chain)
+                metric_row([
+                    ("CALL OPEN INTEREST", f"{calls_oi:,.0f}", "reported contracts"),
+                    ("PUT OPEN INTEREST", f"{puts_oi:,.0f}", "reported contracts"),
+                    ("PUT / CALL OI", f"{pcr:.2f}" if np.isfinite(pcr) else "—", "descriptive ratio"),
+                    ("ESTIMATED MAX PAIN", f"{pain:,.2f}" if np.isfinite(pain) else "—", "OI-based expiry calculation"),
+                ])
+                view = chain[["option_type","strike","lastPrice","bid","ask","volume","openInterest","impliedVolatility"]].copy()
+                view["impliedVolatility"] = pd.to_numeric(view["impliedVolatility"], errors="coerce")*100
+                st.dataframe(view.sort_values(["strike","option_type"]).style.format({
+                    "strike":"{:,.2f}","lastPrice":"{:,.2f}","bid":"{:,.2f}","ask":"{:,.2f}",
+                    "volume":"{:,.0f}","openInterest":"{:,.0f}","impliedVolatility":"{:.1f}%"
+                }, na_rep="—"), use_container_width=True, height=420)
+                oi = chain.groupby(["strike","option_type"], as_index=False)["openInterest"].sum()
+                oi["openInterest"] = pd.to_numeric(oi["openInterest"], errors="coerce").fillna(0)
+                fig = px.bar(oi, x="strike", y="openInterest", color="option_type", barmode="group",
+                             title="Open interest by strike")
+                st.plotly_chart(polish(fig, 360), use_container_width=True)
+                if not pain_curve.empty:
+                    fig = go.Figure(go.Scatter(x=pain_curve["Settlement"],y=pain_curve["Aggregate intrinsic payout"],
+                                               mode="lines+markers",name="Aggregate payout"))
+                    fig.add_vline(x=pain, line_dash="dash", line_color=ORANGE,
+                                  annotation_text=f"Max pain ≈ {pain:,.2f}")
+                    fig.update_layout(title="Expiry payout proxy by settlement price",
+                                      xaxis_title="Hypothetical settlement", yaxis_title="OI × intrinsic value")
+                    st.plotly_chart(polish(fig, 320), use_container_width=True)
+                st.download_button("Download option chain CSV", chain.to_csv(index=False).encode("utf-8"),
+                                   file_name=f"{symbol.replace('^','')}_{expiry}_option_chain.csv", mime="text/csv")
+                st.caption("PCR and max pain are descriptive positioning summaries, not directional signals. OI is not proof of buyer/seller intent; max pain ignores hedging, exercise details, transaction costs and intraday changes.")
+
+    with tab_futures:
+        st.markdown("#### Futures price & curve monitor")
+        st.caption("Yahoo continuous futures symbols are global commodity proxies; they are not individual NSE stock/index futures contracts.")
+        futures_universe = {"Brent crude":"BZ=F","WTI crude":"CL=F","Gold":"GC=F","Silver":"SI=F",
+                            "Natural gas":"NG=F","S&P 500 E-mini":"ES=F","10Y Treasury note":"ZN=F"}
+        selected_futures = st.multiselect("Yahoo futures proxies", list(futures_universe),
+                                          default=["Brent crude","WTI crude","Gold"])
+        period = st.selectbox("History", ["1mo","3mo","6mo","1y","2y"], index=3)
+        if selected_futures:
+            rows=[]
+            for name in selected_futures:
+                ticker=futures_universe[name]
+                try:
+                    hist=yf.download(ticker, period=period, auto_adjust=False, progress=False, threads=False)
+                    if isinstance(hist.columns,pd.MultiIndex):
+                        hist.columns=hist.columns.get_level_values(0)
+                    if not hist.empty and "Close" in hist:
+                        close=hist["Close"].dropna()
+                        if isinstance(close,pd.DataFrame):
+                            close=close.iloc[:,0]
+                        rows.append(pd.DataFrame({"Date":close.index,"Instrument":name,"Close":close.values}))
+                except Exception:
+                    continue
+            if rows:
+                fut=pd.concat(rows,ignore_index=True)
+                fig=px.line(fut,x="Date",y="Close",color="Instrument",title="Continuous futures proxy prices")
+                st.plotly_chart(polish(fig,390),use_container_width=True)
+                st.dataframe(fut.groupby("Instrument")["Close"].agg(["last","min","max"]).style.format("{:,.2f}"),
+                             use_container_width=True)
+                st.download_button("Download futures history CSV",fut.to_csv(index=False).encode("utf-8"),
+                                   "yahoo_continuous_futures.csv","text/csv")
+            else:
+                st.warning("No futures history returned. Try another contract or refresh later.")
+        st.info("Continuous futures symbols are stitched provider series. They do not represent a specific expiry, tradable contract, official settlement, or roll-adjusted strategy P&L.")
+
+    with tab_import:
+        st.markdown("#### Import NSE futures / options data")
+        st.write("Upload a CSV downloaded from an exchange or licensed vendor. The dashboard will analyse only the rows and fields present in your file.")
+        fut_file=st.file_uploader("NSE futures CSV",type=["csv"],key="nse_fut_upload")
+        opt_file=st.file_uploader("NSE options CSV",type=["csv"],key="nse_opt_upload")
+        if fut_file is not None:
+            try:
+                fut=pd.read_csv(fut_file)
+                st.write("Futures columns detected:",", ".join(fut.columns))
+                date_col=next((c for c in ["DATE","date","TIMESTAMP","timestamp"] if c in fut),None)
+                symbol_col=next((c for c in ["SYMBOL","symbol","TckrSymb"] if c in fut),None)
+                close_col=next((c for c in ["CLOSE","close","Settle Price","SETTLE_PR"] if c in fut),None)
+                oi_col=next((c for c in ["OPEN_INT","OPENINTEREST","open_interest","OI"] if c in fut),None)
+                vol_col=next((c for c in ["CONTRACTS","VOLUME","volume","TTL_TRD_QNTY"] if c in fut),None)
+                if date_col and close_col:
+                    fut[date_col]=pd.to_datetime(fut[date_col],errors="coerce")
+                    fut[close_col]=pd.to_numeric(fut[close_col],errors="coerce")
+                    fig=px.line(fut.dropna(subset=[date_col,close_col]),x=date_col,y=close_col,
+                                color=symbol_col if symbol_col else None,title="Uploaded NSE futures prices")
+                    st.plotly_chart(polish(fig,340),use_container_width=True)
+                    if oi_col:
+                        fut[oi_col]=pd.to_numeric(fut[oi_col],errors="coerce")
+                        oi_fig=px.line(fut,x=date_col,y=oi_col,color=symbol_col if symbol_col else None,
+                                       title="Futures open interest")
+                        st.plotly_chart(polish(oi_fig,300),use_container_width=True)
+                    if vol_col:
+                        st.caption(f"Volume field detected: {vol_col}")
+                    st.dataframe(fut.head(100),use_container_width=True)
+                else:
+                    st.warning("Could not identify date and close columns. Keep original NSE headers and check the preview.")
+            except Exception as exc:
+                st.error(f"Could not parse futures CSV: {exc}")
+        if opt_file is not None:
+            try:
+                opt=pd.read_csv(opt_file)
+                st.write("Options columns detected:",", ".join(opt.columns))
+                rename={}
+                aliases={"strike":["STRIKE_PR","strike","Strike Price"],"option_type":["OPTION_TYP","option_type","Instrument Type"],
+                         "open_interest":["OPEN_INT","open_interest","OI"],"volume":["CONTRACTS","volume","VOLUME"],
+                         "expiry":["EXPIRY_DT","expiry","Expiry Date"],"close":["CLOSE","close","Settle Price"]}
+                for target,choices in aliases.items():
+                    source=next((c for c in choices if c in opt.columns),None)
+                    if source: rename[source]=target
+                opt=opt.rename(columns=rename)
+                if {"strike","option_type","open_interest"}.issubset(opt.columns):
+                    opt["strike"]=pd.to_numeric(opt["strike"],errors="coerce")
+                    opt["open_interest"]=pd.to_numeric(opt["open_interest"],errors="coerce").fillna(0)
+                    opt["option_type"]=opt["option_type"].astype(str).str.upper()
+                    opt=opt.dropna(subset=["strike"])
+                    side=opt[opt.option_type.isin(["CE","PE","CALL","PUT"])]
+                    side["Side"]=side["option_type"].replace({"CE":"CALL","PE":"PUT"})
+                    oi=side.groupby(["strike","Side"],as_index=False)["open_interest"].sum()
+                    fig=px.bar(oi,x="strike",y="open_interest",color="Side",barmode="group",
+                               title="Uploaded NSE option open interest by strike")
+                    st.plotly_chart(polish(fig,360),use_container_width=True)
+                    calls=side.loc[side.Side=="CALL","open_interest"].sum()
+                    puts=side.loc[side.Side=="PUT","open_interest"].sum()
+                    metric_row([("CALL OI",f"{calls:,.0f}","uploaded file"),
+                                ("PUT OI",f"{puts:,.0f}","uploaded file"),
+                                ("PUT / CALL OI",f"{puts/calls:.2f}" if calls else "—","descriptive")])
+                    st.dataframe(side.head(150),use_container_width=True)
+                    st.download_button("Download cleaned options CSV",side.to_csv(index=False).encode("utf-8"),
+                                       "cleaned_nse_options.csv","text/csv")
+                else:
+                    st.warning("Options file needs strike, option type (CE/PE or CALL/PUT), and open interest columns.")
+            except Exception as exc:
+                st.error(f"Could not parse options CSV: {exc}")
+        st.caption("For NSE bhavcopy uploads, retain the original headers. Common fields such as SYMBOL, EXPIRY_DT, STRIKE_PR, OPTION_TYP, OPEN_INT, CONTRACTS and CLOSE are recognised. Validate the exchange file format before interpreting the output.")
+
 st.markdown("""
 <div class="hero">
   <div class="eyebrow">DEV DUTTA · QUANTITATIVE RESEARCH LAB</div>
@@ -709,7 +928,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
@@ -719,7 +938,9 @@ elif page == "NSE × Reliance":
     market_dashboard()
 elif page == "Portfolio & Risk Lab":
     risk_dashboard()
-else:
+elif page == "Multi-Asset Data Explorer":
     data_explorer_dashboard()
+else:
+    fo_dashboard()
 st.markdown("---")
 st.markdown('<div class="small-note">RESEARCH ONLY · Not investment advice · Not a live trading system · Validate with licensed exchange data before drawing market conclusions.</div>', unsafe_allow_html=True)
