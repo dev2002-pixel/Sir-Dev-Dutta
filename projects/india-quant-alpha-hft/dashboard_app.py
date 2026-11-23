@@ -140,9 +140,9 @@ def download_intraday(period, interval):
 def pairs_dashboard():
     st.markdown('<div class="section-kicker">01 / strategy research</div>', unsafe_allow_html=True)
     st.subheader("Statistical arbitrage · spread & execution monitor")
+    data_source = "Deterministic synthetic sample"
     st.caption(f"Data source: {data_source}. Upload a CSV with date, asset_a and asset_b columns to run the same research workflow on your own historical pair. No live orders are sent.")
     uploaded = st.sidebar.file_uploader("Optional pairs CSV", type=["csv"], help="Required columns: date, asset_a, asset_b")
-    data_source = "Deterministic synthetic sample"
     data = synthetic_pair_data()
     if uploaded is not None:
         try:
