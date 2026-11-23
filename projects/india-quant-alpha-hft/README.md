@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has six workspaces:
+The dashboard has seven workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -117,6 +117,15 @@ Official source: [NSE All Reports – Derivatives](https://www.nseindia.com/all-
 
 **Critical data limitation:** Yahoo Finance does not reliably expose complete NSE stock/index futures and options chains. NSE option-chain availability through Yahoo may be empty for Indian underlyings; use the NSE data import tab with an exchange or licensed-vendor CSV for actual NSE derivatives. Yahoo continuous futures tickers are stitched global proxy series, not specific NSE expiries or executable contracts. Uploaded data is analysed as supplied and should be checked against the original exchange file. PCR and max pain are descriptive statistics, not trading signals.
 
+
+### 7. Stochastic Calculus & Astro-Market Research
+- **GBM simulator:** configurable initial price, drift, volatility, horizon, path count, time steps and reproducible random seed; simulated paths and terminal-price distribution are compared with analytical GBM moments.
+- **Itô's lemma calculator:** analytic first/second spatial derivatives and time derivative for log-price, squared-price, square-root and power-exponential functions; computes the local drift and diffusion coefficients under GBM.
+- **Crude and gold event study:** fetches Brent crude and gold continuous-futures research proxies from Yahoo Finance, accepts a user-uploaded planetary-event calendar, maps events to the next available trading session, and calculates +1/+3/+5/+10-session forward returns by body and event type.
+- Downloadable event-study output and a CSV template with columns `date,body,event`.
+
+**Astrology disclaimer:** planetary event dates are user supplied; the dashboard does not calculate ephemerides or claim that planetary movements predict markets. The overlay is a speculative descriptive event study, not an established forecasting method. Event clustering, multiple testing, overlapping windows and macroeconomic confounders can produce spurious associations. GBM is a simplified constant-parameter model and is not a commodity-pricing model; futures carry, storage, convenience yield, seasonality, rolls and jumps are omitted.
+
 ### 6. NSE · BSE · Yahoo data pipelines
 - Dedicated pipeline control room with independent NSE, BSE and Yahoo connection status
 - Yahoo Finance reference-series fetcher with symbol, interval and lookback controls
@@ -162,7 +171,8 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive six-workspace trading dashboard
+- `dashboard_app.py` — interactive seven-workspace trading dashboard
+- `stochastic_astro_lab.py` — GBM simulation, Itô coefficient calculator and crude/gold event-study workspace
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
 - `nse_reliance_analysis.py` — NSE/Reliance market-linkage research
