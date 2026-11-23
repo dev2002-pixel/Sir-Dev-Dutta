@@ -103,7 +103,11 @@ MARKET_UNIVERSE = {
     "TATA_MOTORS": "TATAMOTORS.NS", "MARUTI": "MARUTI.NS", "SUN_PHARMA": "SUNPHARMA.NS",
     "NIFTY50": "^NSEI", "BANKNIFTY": "^NSEBANK", "NIFTYENERGY": "^CNXENERGY",
     "INDIA_VIX": "^INDIAVIX", "USDINR": "INR=X", "BRENT_CRUDE": "BZ=F",
-    "WTI_CRUDE": "CL=F", "GOLD": "GC=F"
+    "WTI_CRUDE": "CL=F", "GOLD": "GC=F",
+    "SP500": "^GSPC", "NASDAQ": "^IXIC", "DOW": "^DJI", "RUSSELL2000": "^RUT", "VIX": "^VIX",
+    "AAPL": "AAPL", "MSFT": "MSFT", "NVDA": "NVDA", "AMZN": "AMZN", "GOOGL": "GOOGL",
+    "META": "META", "JPM": "JPM", "TSLA": "TSLA", "SPY": "SPY", "QQQ": "QQQ",
+    "DXY": "DX-Y.NYB", "EURUSD": "EURUSD=X", "USDJPY": "JPY=X"
 }
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -298,16 +302,19 @@ def pairs_dashboard():
     st.caption("This panel models turnover costs on a daily spread series. It does not model queue priority, partial fills, latency, exchange fees, taxes, or market impact from order-book depth. Treat all metrics as illustrative, not a performance claim.")
 
 
-def risk_dashboard():
+def risk_dashboard(region="INR"):
+    is_us = region == "USD"
+    region_assets = (["SP500","NASDAQ","DOW","RUSSELL2000","VIX","AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ"] if is_us else ["RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA","NIFTY50","BANKNIFTY","NIFTYENERGY","INDIA_VIX"])
     st.markdown('<div class="section-kicker">03 / portfolio construction & risk</div>', unsafe_allow_html=True)
-    st.subheader("Portfolio risk laboratory")
+    st.subheader(f"{region} portfolio risk laboratory")
     st.caption("Build a weighted basket from downloaded market proxies, inspect portfolio risk and run transparent shock scenarios. Returns are historical estimates, not forecasts.")
     with st.sidebar:
         st.markdown("### Risk lab data controls")
         risk_start = st.date_input("Risk sample start", value=pd.Timestamp("2020-01-01").date(),
                                    min_value=pd.Timestamp("2010-01-01").date(), key="risk_start")
         risk_end = st.date_input("Risk sample end (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1), key="risk_end")
-        risk_assets = st.multiselect("Download assets", list(MARKET_UNIVERSE), default=["RELIANCE","NIFTY50","BANKNIFTY","TCS","HDFC_BANK"], key="risk_assets")
+        risk_defaults = ["SP500","NASDAQ","AAPL","MSFT","NVDA"] if is_us else ["RELIANCE","NIFTY50","BANKNIFTY","TCS","HDFC_BANK"]
+        risk_assets = st.multiselect(f"Download {region} assets", region_assets, default=risk_defaults, key=f"risk_assets_{region}")
         risk_refresh = st.button("Refresh risk data")
     if risk_refresh:
         download_market.clear()
@@ -316,7 +323,7 @@ def risk_dashboard():
         st.warning("Not enough market series were returned. Try a different date range or refresh.")
         return
     candidates = list(prices.columns)
-    defaults = [x for x in ["RELIANCE", "NIFTY50", "BANKNIFTY"] if x in candidates]
+    defaults = [x for x in (["SP500","NASDAQ","AAPL"] if is_us else ["RELIANCE","NIFTY50","BANKNIFTY"]) if x in candidates]
     selected = st.multiselect("Portfolio constituents", candidates, default=defaults or candidates[:2])
     if not selected:
         st.info("Select at least one asset to construct a portfolio.")
@@ -453,7 +460,8 @@ def risk_dashboard():
     param_var = -(port_ret.mean() - z_scores[confidence]*port_ret.std())
     total_return = equity.iloc[-1]-1
     max_dd = drawdown.min()
-    benchmark = returns["NIFTY50"] if "NIFTY50" in returns else None
+    benchmark_name = "SP500" if is_us else "NIFTY50"
+    benchmark = returns[benchmark_name] if benchmark_name in returns else None
     beta = (port_ret.cov(benchmark)/benchmark.var()) if benchmark is not None and benchmark.var()>0 else np.nan
     metric_row([
         ("PORTFOLIO RETURN",f"{total_return:.1%}",f"{len(port_ret):,} daily observations"),
@@ -497,7 +505,7 @@ def risk_dashboard():
             fig.add_vline(x=-hist_var*100,line_dash="dash",line_color=ORANGE,annotation_text="Historical VaR")
             fig.update_layout(title="Portfolio daily-return distribution",xaxis_title="Daily return (%)",yaxis_title="Frequency")
             st.plotly_chart(polish(fig,340),use_container_width=True)
-        st.metric("Beta vs NIFTY 50",f"{beta:.2f}" if np.isfinite(beta) else "—","descriptive full-sample estimate")
+        st.metric(f"Beta vs {benchmark_name}",f"{beta:.2f}" if np.isfinite(beta) else "—","descriptive full-sample estimate")
         st.dataframe(corr.style.format("{:.3f}"),use_container_width=True)
     with tab3:
         st.markdown("#### One-day deterministic shock scenarios")
@@ -522,15 +530,17 @@ def risk_dashboard():
                            file_name="india_quant_portfolio_weights.csv",mime="text/csv")
 
 
-def data_explorer_dashboard():
+def data_explorer_dashboard(region="INR"):
+    is_us = region == "USD"
+    explorer_universe = (["SP500","NASDAQ","DOW","RUSSELL2000","VIX","AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ","DXY","EURUSD","USDJPY"] if is_us else ["RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA","NIFTY50","BANKNIFTY","NIFTYENERGY","INDIA_VIX","USDINR","BRENT_CRUDE","WTI_CRUDE","GOLD"])
     st.markdown('<div class="section-kicker">04 / cross-asset data terminal</div>', unsafe_allow_html=True)
-    st.subheader("Market data & analytics")
+    st.subheader(f"{region} market data & analytics")
     st.caption("Yahoo Finance · adjusted daily prices · fetched on demand and cached for 15 minutes.")
     with st.container(border=True):
         c1,c2,c3=st.columns([1.4,1,1])
         with c1:
-            chosen=st.multiselect("Instruments",list(MARKET_UNIVERSE),
-                default=["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"],key="explorer_assets")
+            chosen=st.multiselect(f"{region} instruments",explorer_universe,
+                default=(["SP500","NASDAQ","AAPL","MSFT","NVDA","VIX","DXY"] if is_us else ["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"]),key=f"explorer_assets_{region}")
         with c2:
             start=st.date_input("From",value=pd.Timestamp("2021-01-01").date(),key="explorer_start")
         with c3:
@@ -753,32 +763,33 @@ def download_equity_history(tickers, start_date, end_date, interval="1d"):
     except Exception:
         return pd.DataFrame(), {}
 
-def equity_markets_dashboard():
+def equity_markets_dashboard(region="INR"):
+    allowed_groups = ["US · Mega caps", "US · ETFs & benchmarks"] if region == "USD" else ["India · Large caps", "India · Additional equities"]
     st.markdown('<div class="section-kicker">08 / global equity research</div>', unsafe_allow_html=True)
-    st.subheader("Equity markets · India & United States")
+    st.subheader(f"Equity markets · {region}")
     st.caption("Multi-stock market monitor with adjusted OHLCV history, technical indicators, relative performance and risk analytics.")
     all_presets = {}
-    for group in EQUITY_PRESETS.values():
-        all_presets.update(group)
+    for group_name in allowed_groups:
+        all_presets.update(EQUITY_PRESETS[group_name])
     left, mid, right = st.columns([1.25,1,1])
     with left:
-        groups = st.multiselect("Universe", list(EQUITY_PRESETS), default=["India · Large caps","US · Mega caps"])
+        groups = st.multiselect("Universe", allowed_groups, default=allowed_groups, key=f"equity_groups_{region}")
     group_symbols = {}
     for group in groups:
         group_symbols.update(EQUITY_PRESETS[group])
     with mid:
-        selected_names = st.multiselect("Stocks / ETFs", list(group_symbols), default=list(group_symbols)[:8])
+        selected_names = st.multiselect("Stocks / ETFs", list(group_symbols), default=list(group_symbols)[:8], key=f"equity_names_{region}")
     with right:
-        interval_label = st.selectbox("Bar frequency", ["Daily","Weekly"], index=0)
+        interval_label = st.selectbox("Bar frequency", ["Daily","Weekly"], index=0, key=f"equity_frequency_{region}")
     custom = st.text_input("Additional Yahoo tickers (comma-separated)", placeholder="e.g. ^NSEI, NVDA, 7203.T")
     tickers = [group_symbols[n] for n in selected_names]
     tickers += [x.strip().upper() for x in custom.split(",") if x.strip()]
     tickers = list(dict.fromkeys(tickers))
     date_left, date_right, refresh_col = st.columns([1,1,1])
     with date_left:
-        start = st.date_input("History from", value=pd.Timestamp("2021-01-01").date(), key="equity_start")
+        start = st.date_input("History from", value=pd.Timestamp("2021-01-01").date(), key=f"equity_start_{region}")
     with date_right:
-        end = st.date_input("History to (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key="equity_end")
+        end = st.date_input("History to (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key=f"equity_end_{region}")
     with refresh_col:
         st.write("")
         refresh = st.button("↻ Refresh equity data", type="primary", use_container_width=True)
@@ -815,14 +826,14 @@ def equity_markets_dashboard():
     st.caption(f"{len(available)} tickers returned · last observation {prices.dropna(how='all').index[-1]:%Y-%m-%d} · Yahoo Finance research data; not guaranteed live.")
     tabs = st.tabs(["Single-stock technicals","Relative performance","Risk & correlation","Raw data"])
     with tabs[0]:
-        chosen = st.selectbox("Stock detail", available, key="equity_detail")
+        chosen = st.selectbox("Stock detail", available, key=f"equity_detail_{region}")
         detail = ohlcv.get(chosen, pd.DataFrame())
         if detail.empty or "Close" not in detail:
             st.info("OHLC data unavailable for this ticker. Using the adjusted-close series.")
             detail = pd.DataFrame({"Close":prices[chosen]})
         close = pd.to_numeric(detail["Close"],errors="coerce")
-        fast = st.slider("Fast SMA",5,100,20,5,key="eq_sma_fast")
-        slow = st.slider("Slow SMA",20,250,50,5,key="eq_sma_slow")
+        fast = st.slider("Fast SMA",5,100,20,5,key=f"eq_sma_fast_{region}")
+        slow = st.slider("Slow SMA",20,250,50,5,key=f"eq_sma_slow_{region}")
         delta = close.diff()
         gain = delta.clip(lower=0).ewm(alpha=1/14,adjust=False,min_periods=14).mean()
         loss = (-delta.clip(upper=0)).ewm(alpha=1/14,adjust=False,min_periods=14).mean()
@@ -886,7 +897,7 @@ def equity_markets_dashboard():
         st.dataframe(prices.tail(100),use_container_width=True)
         st.download_button("Download adjusted close prices CSV",prices.to_csv().encode("utf-8"),"equity_adjusted_prices.csv","text/csv")
         st.download_button("Download log returns CSV",rets.to_csv().encode("utf-8"),"equity_log_returns.csv","text/csv")
-        detail_export = ohlcv.get(st.selectbox("OHLCV export ticker",available,key="eq_export_ticker"),pd.DataFrame())
+        detail_export = ohlcv.get(st.selectbox("OHLCV export ticker",available,key=f"eq_export_ticker_{region}"),pd.DataFrame())
         if not detail_export.empty:
             st.download_button("Download selected OHLCV CSV",detail_export.to_csv().encode("utf-8"),"equity_ohlcv.csv","text/csv")
     st.caption("Source: Yahoo Finance through yfinance. Adjusted OHLC prices include provider adjustments; volume is provider-reported. yfinance describes its interface as intended for research/personal use—review Yahoo's terms and data rights before redistribution.")
@@ -1142,6 +1153,75 @@ def read_nse_bhavcopy_upload(uploaded_file):
             with archive.open(chosen) as stream:
                 return pd.read_csv(stream, low_memory=False), chosen
     return pd.read_csv(io.BytesIO(payload), low_memory=False), getattr(uploaded_file, "name", "uploaded.csv")
+
+
+
+def us_market_dashboard():
+    st.markdown('<div class="section-kicker">02 / United States market intelligence</div>', unsafe_allow_html=True)
+    st.subheader("US markets · Wall Street market-linkage terminal")
+    st.caption("US equity benchmarks, mega-cap leadership, volatility and cross-sector relationships. Quotes are in USD.")
+    labels = ["SP500","NASDAQ","DOW","RUSSELL2000","VIX","AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ"]
+    a,b = st.columns(2)
+    with a:
+        start = st.date_input("US history from", value=pd.Timestamp("2020-01-01").date(), key="us_market_start")
+    with b:
+        end = st.date_input("US history to (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key="us_market_end")
+    selected = st.multiselect("US benchmarks and stocks", labels, default=["SP500","NASDAQ","DOW","VIX","AAPL","MSFT","NVDA","SPY"], key="us_market_assets")
+    refresh = st.button("Refresh US market data", type="primary")
+    if start >= end:
+        st.error("Start date must be earlier than end date.")
+        return
+    if refresh:
+        download_market.clear()
+    prices = download_market(str(start), str(end), selected)
+    if prices.empty:
+        st.warning("No US market history returned. Check provider availability or date range.")
+        return
+    returns = np.log(prices.where(prices > 0)).diff()
+    latest = prices.ffill().iloc[-1]
+    previous = prices.ffill().iloc[-2] if len(prices) > 1 else latest
+    cols = st.columns(min(4, len(prices.columns)))
+    for i, name in enumerate(prices.columns):
+        change = (latest[name]/previous[name]-1)*100 if pd.notna(previous[name]) and previous[name] else np.nan
+        cols[i % len(cols)].metric(name, "USD " + f"{latest[name]:,.2f}", f"{change:+.2f}% · last observation" if np.isfinite(change) else "—")
+    st.caption(f"Latest provider observation: {prices.dropna(how='all').index[-1]:%Y-%m-%d} · USD market series · Yahoo data is not guaranteed live.")
+    t1,t2,t3,t4 = st.tabs(["US benchmarks","Mega-cap leadership","Volatility & correlation","Downloads"])
+    with t1:
+        names = [x for x in ["SP500","NASDAQ","DOW","RUSSELL2000"] if x in prices]
+        if names:
+            frame = prices[names]
+            indexed = frame.div(frame.apply(lambda x:x.dropna().iloc[0] if x.notna().any() else np.nan))*100
+            fig = go.Figure()
+            for name in names:
+                fig.add_trace(go.Scatter(x=indexed.index,y=indexed[name],name=name))
+            fig.update_layout(title="US benchmarks · relative performance (growth of 100)")
+            st.plotly_chart(polish(fig,380),use_container_width=True)
+        if "VIX" in prices:
+            fig = go.Figure(go.Scatter(x=prices.index,y=prices["VIX"],name="VIX"))
+            fig.update_layout(title="CBOE VIX · volatility index level")
+            st.plotly_chart(polish(fig,260),use_container_width=True)
+    with t2:
+        names = [x for x in ["AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA"] if x in prices]
+        if names:
+            frame = prices[names]
+            indexed = frame.div(frame.apply(lambda x:x.dropna().iloc[0] if x.notna().any() else np.nan))*100
+            fig = go.Figure()
+            for name in names:
+                fig.add_trace(go.Scatter(x=indexed.index,y=indexed[name],name=name))
+            fig.update_layout(title="US mega-cap leadership · growth of 100")
+            st.plotly_chart(polish(fig,380),use_container_width=True)
+    with t3:
+        usable = returns.dropna(how="all")
+        if usable.shape[1] > 1 and len(usable.dropna()) > 3:
+            fig = px.imshow(usable.corr(),text_auto=".2f",zmin=-1,zmax=1,color_continuous_scale="RdBu_r",title="US daily-return correlation")
+            fig.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(polish(fig,390),use_container_width=True)
+        st.dataframe(pd.DataFrame({"Annualised return":returns.mean()*252,"Annualised volatility":returns.std()*np.sqrt(252)}).style.format("{:.2%}"),use_container_width=True)
+    with t4:
+        st.dataframe(prices.tail(100),use_container_width=True)
+        st.download_button("Download US adjusted prices CSV",prices.to_csv().encode("utf-8"),"us_adjusted_prices_usd.csv","text/csv")
+        st.download_button("Download US log returns CSV",returns.to_csv().encode("utf-8"),"us_log_returns.csv","text/csv")
+    st.caption("US statistics are calculated in USD. No FX conversion or mixed-currency portfolio aggregation is performed.")
 
 
 def fo_dashboard():
@@ -1504,20 +1584,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Equity Markets", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "India Markets · INR", "US Markets · USD", "India Equities · INR", "US Equities · USD", "India Portfolio & Risk · INR", "US Portfolio & Risk · USD", "India Multi-Asset · INR", "US Multi-Asset · USD", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
 if page == "Trading & HFT":
     pairs_dashboard()
-elif page == "NSE × Reliance":
+elif page == "India Markets · INR":
     market_dashboard()
-elif page == "Equity Markets":
-    equity_markets_dashboard()
-elif page == "Portfolio & Risk Lab":
-    risk_dashboard()
-elif page == "Multi-Asset Data Explorer":
-    data_explorer_dashboard()
+elif page == "US Markets · USD":
+    us_market_dashboard()
+elif page == "India Equities · INR":
+    equity_markets_dashboard("INR")
+elif page == "US Equities · USD":
+    equity_markets_dashboard("USD")
+elif page == "India Portfolio & Risk · INR":
+    risk_dashboard("INR")
+elif page == "US Portfolio & Risk · USD":
+    risk_dashboard("USD")
+elif page == "India Multi-Asset · INR":
+    data_explorer_dashboard("INR")
+elif page == "US Multi-Asset · USD":
+    data_explorer_dashboard("USD")
 elif page == "Futures & Options":
     fo_dashboard()
 elif page == "Stochastic Calculus & Astro Lab":
