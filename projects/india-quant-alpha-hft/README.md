@@ -9,6 +9,18 @@ A reproducible research project connecting:
 
 > **Data note:** the included pairs strategy uses deterministic synthetic sample data. The NSE/Reliance dashboard downloads Yahoo Finance adjusted-price proxies. Neither source is official exchange-grade tick data or evidence of a profitable strategy.
 
+## Visual chart previews
+
+These previews are embedded directly in this README so the charts are visible on GitHub without launching Streamlit. They are **illustrative layouts using synthetic values**, not observed NSE returns or verified strategy performance. Launch the dashboard below to populate the NSE workspace with downloaded price data.
+
+### Trading & HFT — strategy, risk and signals
+
+![Trading and HFT dashboard chart preview](./assets/trading-hft-preview.svg)
+
+### NSE × Reliance — relative performance and market linkage
+
+![NSE and Reliance chart preview](./assets/nse-reliance-preview.svg)
+
 ## Launch the visual trading terminal
 
 Python 3.10+:
