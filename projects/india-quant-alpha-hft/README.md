@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has seven workspaces:
+The dashboard has eight workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -62,7 +62,16 @@ The market workspace uses Yahoo Finance symbols as research proxies:
 - NIFTY Energy: `^CNXENERGY` (may not be available from the provider)
 
 
-### 3. Portfolio & Risk Lab
+### 3. Equity Markets
+- Dedicated India and US equity universe with Indian large caps, additional NSE-listed equities, US mega caps and benchmark ETFs
+- Custom Yahoo ticker input for additional listings and international symbols supported by the provider
+- Daily or weekly adjusted OHLCV history, candlesticks, configurable moving averages, Bollinger Bands, RSI(14), MACD(12/26/9) and volume
+- Multi-stock relative performance rebased to 100, return correlation, annualised volatility / mean-return summaries, and CSV exports for prices, returns and selected OHLCV
+- Default coverage includes Reliance, TCS, Infosys, HDFC Bank, ICICI Bank, SBI, Bajaj Finance, Asian Paints, Titan, Wipro, NTPC, Apple, Microsoft, NVIDIA, Amazon, Alphabet, Meta, JPMorgan, Tesla, SPY and QQQ
+
+The equity workspace fetches on demand and caches data for 15 minutes. Prices are adjusted provider history, not executable quotes or guaranteed real-time exchange data. Cross-market charts retain each security's local quote currency and do not convert INR/USD. yfinance documents Yahoo Finance access as intended for research/personal use; review provider terms and redistribution rights before publishing data.
+
+### 4. Portfolio & Risk Lab
 - Select market proxies and interactively allocate long-only portfolio weights (normalised to 100%)
 - Portfolio growth, drawdown and rolling annualised volatility
 - Historical VaR, CVaR and normal-parametric VaR at selectable confidence levels
@@ -74,7 +83,7 @@ Risk estimates are historical, sample-dependent and not forecasts. Parametric Va
 
 
 - **INR contribution calculator:** enter current portfolio value and proposed fresh capital, then allocate the new money using existing stock weights, equal weights, or a custom split. It calculates rupee exposure, approximate added units, post-investment constituent weights, percentage-point weight changes, and historical portfolio volatility / 95% VaR / annualised-return comparisons. Excludes index, FX and commodity proxies from stock purchase allocation; excludes execution costs and fractional-share/lot-size constraints.
-### 4. Multi-Asset Data Explorer
+### 5. Multi-Asset Data Explorer
 Selectable daily price history for a 23-instrument research universe:
 - **Indian equities:** Reliance, TCS, Infosys, HDFC Bank, ICICI Bank, SBI, Axis Bank, Kotak Bank, L&T, ITC, Hindustan Unilever, Bharti Airtel, Tata Motors, Maruti and Sun Pharma.
 - **Indian indices / volatility:** NIFTY 50, Bank NIFTY, NIFTY Energy and India VIX.
@@ -82,7 +91,7 @@ Selectable daily price history for a 23-instrument research universe:
 
 Interactive views include latest available price/session move cards, rebased performance, OHLC candlesticks or close-price charts, configurable simple moving averages, reported volume, daily-return distributions, return correlation heatmaps, rolling pairwise correlation, annualised return/volatility, Sharpe (zero risk-free rate), max drawdown, best/worst day, observation coverage/missingness and downloadable price/return CSV files. Multi-symbol prices are requested in a bulk Yahoo Finance download; requests are cached for 15 minutes and users can force a refresh. Instruments are fetched only when selected. Provider symbols may be unavailable or return incomplete history; missing observations are retained rather than manufactured.
 
-### 5. Futures & Options
+### 6. Futures & Options
 - Yahoo Finance option-chain lookup for underlyings / expiries where Yahoo exposes them
 - Calls and puts table with strike, last price, bid/ask, volume, open interest and implied volatility (when returned)
 - Call OI, put OI, put/call OI ratio, strike-level OI chart and an OI-based expiry max-pain estimate
@@ -118,7 +127,7 @@ Official source: [NSE All Reports – Derivatives](https://www.nseindia.com/all-
 **Critical data limitation:** Yahoo Finance does not reliably expose complete NSE stock/index futures and options chains. NSE option-chain availability through Yahoo may be empty for Indian underlyings; use the NSE data import tab with an exchange or licensed-vendor CSV for actual NSE derivatives. Yahoo continuous futures tickers are stitched global proxy series, not specific NSE expiries or executable contracts. Uploaded data is analysed as supplied and should be checked against the original exchange file. PCR and max pain are descriptive statistics, not trading signals.
 
 
-### 7. Stochastic Calculus & Astro-Market Research
+### 8. Stochastic Calculus & Astro-Market Research
 - **GBM simulator:** configurable initial price, drift, volatility, horizon, path count, time steps and reproducible random seed; simulated paths and terminal-price distribution are compared with analytical GBM moments.
 - **Itô's lemma calculator:** analytic first/second spatial derivatives and time derivative for log-price, squared-price, square-root and power-exponential functions; computes the local drift and diffusion coefficients under GBM.
 - **Crude and gold event study:** fetches Brent crude and gold continuous-futures research proxies from Yahoo Finance, accepts a user-uploaded planetary-event calendar, maps events to the next available trading session, and calculates +1/+3/+5/+10-session forward returns by body and event type.
@@ -126,7 +135,7 @@ Official source: [NSE All Reports – Derivatives](https://www.nseindia.com/all-
 
 **Astrology disclaimer:** planetary event dates are user supplied; the dashboard does not calculate ephemerides or claim that planetary movements predict markets. The overlay is a speculative descriptive event study, not an established forecasting method. Event clustering, multiple testing, overlapping windows and macroeconomic confounders can produce spurious associations. GBM is a simplified constant-parameter model and is not a commodity-pricing model; futures carry, storage, convenience yield, seasonality, rolls and jumps are omitted.
 
-### 6. NSE · BSE · Yahoo data pipelines
+### 7. NSE · BSE · Yahoo data pipelines
 - Dedicated pipeline control room with independent NSE, BSE and Yahoo connection status
 - Yahoo Finance reference-series fetcher with symbol, interval and lookback controls
 - Configurable NSE and BSE REST/CSV feed adapters for endpoints supplied by the user under their exchange or vendor agreement
@@ -171,7 +180,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive seven-workspace trading dashboard
+- `dashboard_app.py` — interactive eight-workspace trading dashboard
 - `stochastic_astro_lab.py` — GBM simulation, Itô coefficient calculator and crude/gold event-study workspace
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
