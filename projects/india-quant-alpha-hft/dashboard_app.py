@@ -8,6 +8,9 @@ The pairs-trading panel uses deterministic synthetic sample data by default.
 from __future__ import annotations
 
 from pathlib import Path
+import os
+from datetime import datetime, timezone
+import requests
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -919,6 +922,125 @@ def fo_dashboard():
                 st.error(f"Could not parse options CSV: {exc}")
         st.caption("For NSE bhavcopy uploads, retain the original headers. Common fields such as SYMBOL, EXPIRY_DT, STRIKE_PR, OPTION_TYP, OPEN_INT, CONTRACTS and CLOSE are recognised. Validate the exchange file format before interpreting the output.")
 
+
+
+# Exchange adapters intentionally use subscriber-provided endpoints/credentials.
+# Do not scrape exchange websites or embed credentials in source control.
+def configured_secret(name, default=""):
+    try:
+        return str(st.secrets.get(name, os.getenv(name, default)))
+    except Exception:
+        return os.getenv(name, default)
+
+def fetch_configured_feed(provider, timeout=12):
+    """Fetch CSV/JSON from a licensed vendor or exchange endpoint configured by the operator."""
+    base = f"{provider.upper()}_FEED_URL"
+    url = configured_secret(base).strip()
+    token = configured_secret(f"{provider.upper()}_API_TOKEN").strip()
+    if not url:
+        return None, {"status":"Not configured","detail":f"Set {base} and, if required, {provider.upper()}_API_TOKEN in Streamlit secrets."}
+    headers = {"Accept":"application/json, text/csv"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    try:
+        response = requests.get(url, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type","").lower()
+        if "json" in content_type or response.text.lstrip().startswith(("{","[")):
+            payload = response.json()
+            if isinstance(payload, dict):
+                payload = payload.get("data", payload.get("results", payload.get("records", payload)))
+            frame = pd.DataFrame(payload if isinstance(payload,list) else [payload])
+        else:
+            from io import StringIO
+            frame = pd.read_csv(StringIO(response.text))
+        if frame.empty:
+            return frame, {"status":"Connected · empty response","detail":f"HTTP {response.status_code}; endpoint returned no rows."}
+        return frame, {"status":"Connected","detail":f"HTTP {response.status_code} · {len(frame):,} rows · {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC"}
+    except Exception as exc:
+        return None, {"status":"Error","detail":str(exc)[:240]}
+
+def pipeline_monitor_dashboard():
+    st.markdown('<div class="section-kicker">06 / data engineering & feed observability</div>', unsafe_allow_html=True)
+    st.subheader("Exchange data pipeline control room")
+    st.caption("Independent NSE, BSE and Yahoo Finance connectors · explicit source labels · freshness checks · no silent substitution.")
+    st.info("NSE/BSE feeds require a permitted API or licensed vendor connection. Add your endpoint and token in Streamlit Cloud → App settings → Secrets. This app does not scrape exchange webpages or bypass access controls.")
+    providers=["NSE","BSE","YAHOO"]
+    statuses={}
+    outputs={}
+    cols=st.columns(3)
+    for col, provider in zip(cols,providers):
+        with col:
+            st.markdown(f"**{provider} PIPELINE**")
+            if provider=="YAHOO":
+                st.caption("yfinance historical / periodic snapshot")
+                if st.button("Test Yahoo connection",key="test_yahoo_pipeline"):
+                    try:
+                        test=yf.download("RELIANCE.NS",period="5d",interval="1d",progress=False,threads=False)
+                        if not test.empty:
+                            statuses[provider]={"status":"Connected","detail":f"{len(test)} daily bars · latest {test.index[-1]}"}
+                        else:
+                            statuses[provider]={"status":"No data","detail":"Yahoo returned an empty response."}
+                    except Exception as exc:
+                        statuses[provider]={"status":"Error","detail":str(exc)[:200]}
+            else:
+                st.caption("Subscriber / licensed-vendor REST endpoint")
+                st.code(f"{provider}_FEED_URL\n{provider}_API_TOKEN",language="text")
+                if st.button(f"Test {provider} feed",key=f"test_{provider.lower()}_pipeline"):
+                    frame, status=fetch_configured_feed(provider)
+                    statuses[provider]=status
+                    outputs[provider]=frame
+    # Store button results in session so each independent test is visible across reruns.
+    for provider in providers:
+        if provider in statuses:
+            st.session_state[f"pipeline_status_{provider}"]=statuses[provider]
+            if provider in outputs and outputs[provider] is not None:
+                st.session_state[f"pipeline_frame_{provider}"]=outputs[provider]
+    st.markdown("#### Connection status")
+    status_cols=st.columns(3)
+    for col, provider in zip(status_cols,providers):
+        status=st.session_state.get(f"pipeline_status_{provider}")
+        if provider=="YAHOO" and status is None:
+            status={"status":"Available · test on demand","detail":"Yahoo connector uses yfinance; availability and delays depend on provider."}
+        if status is None:
+            status={"status":"Not configured","detail":"Configure the endpoint and token, then test the feed."}
+        with col:
+            st.metric(provider, status["status"])
+            st.caption(status["detail"])
+    st.markdown("#### Inspect connected exchange data")
+    for provider in ["NSE","BSE"]:
+        frame=st.session_state.get(f"pipeline_frame_{provider}")
+        if frame is not None and not frame.empty:
+            with st.expander(f"{provider} · latest returned records",expanded=True):
+                st.dataframe(frame.head(100),use_container_width=True)
+                st.download_button(f"Download {provider} feed snapshot",frame.to_csv(index=False).encode("utf-8"),
+                                   file_name=f"{provider.lower()}_feed_snapshot.csv",mime="text/csv",key=f"download_{provider}_snapshot")
+    st.markdown("#### Yahoo Finance reference pipeline")
+    symbol=st.selectbox("Yahoo symbol",["RELIANCE.NS","^NSEI","^NSEBANK","TCS.NS","INFY.NS","BZ=F","GC=F"])
+    interval=st.selectbox("Sampling interval",["1m","5m","15m","1h","1d"],index=3)
+    period=st.selectbox("Lookback",["1d","5d","1mo","3mo","1y"],index=2)
+    if st.button("Fetch Yahoo reference series",type="primary"):
+        try:
+            hist=yf.download(symbol,period=period,interval=interval,progress=False,threads=False)
+            if isinstance(hist.columns,pd.MultiIndex):
+                hist.columns=hist.columns.get_level_values(0)
+            if hist.empty:
+                st.warning("Yahoo returned no observations for this symbol / interval.")
+            else:
+                close=hist["Close"]
+                if isinstance(close,pd.DataFrame): close=close.iloc[:,0]
+                st.metric("Latest Yahoo close",f"{float(close.dropna().iloc[-1]):,.3f}",
+                          f"{len(close.dropna())} observations")
+                fig=go.Figure(go.Scatter(x=close.index,y=close,name=symbol,line=dict(color=CYAN,width=1.8)))
+                fig.update_layout(title=f"{symbol} · Yahoo Finance reference data")
+                st.plotly_chart(polish(fig,350),use_container_width=True)
+                st.dataframe(hist.tail(30),use_container_width=True)
+                st.download_button("Download Yahoo series CSV",hist.to_csv().encode("utf-8"),
+                                   file_name=f"yahoo_{symbol.replace('^','')}_{interval}.csv",mime="text/csv")
+        except Exception as exc:
+            st.error(f"Yahoo request failed: {exc}")
+    st.caption("Operational note: Streamlit Cloud runs only while the app is active and is not a durable scheduler. For continuous ingestion, run a separate worker on an always-on host, persist licensed data to a database, and have Streamlit read that store. Do not treat browser refresh as a guaranteed market feed.")
+
 st.markdown("""
 <div class="hero">
   <div class="eyebrow">DEV DUTTA · QUANTITATIVE RESEARCH LAB</div>
@@ -928,7 +1050,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
@@ -940,7 +1062,9 @@ elif page == "Portfolio & Risk Lab":
     risk_dashboard()
 elif page == "Multi-Asset Data Explorer":
     data_explorer_dashboard()
-else:
+elif page == "Futures & Options":
     fo_dashboard()
+else:
+    pipeline_monitor_dashboard()
 st.markdown("---")
 st.markdown('<div class="small-note">RESEARCH ONLY · Not investment advice · Not a live trading system · Validate with licensed exchange data before drawing market conclusions.</div>', unsafe_allow_html=True)
