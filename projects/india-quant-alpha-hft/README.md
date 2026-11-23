@@ -32,7 +32,7 @@ pip install -r requirements.txt
 streamlit run dashboard_app.py
 ~~~
 
-The dashboard has four workspaces:
+The dashboard has five workspaces:
 
 ### 1. Trading & HFT
 - OLS log-price hedge ratio and rolling spread z-score
@@ -80,6 +80,16 @@ Selectable daily price history for a 23-instrument research universe:
 
 Interactive views include latest available price/session move cards, rebased performance, OHLC candlesticks or close-price charts, configurable simple moving averages, reported volume, daily-return distributions, return correlation heatmaps, rolling pairwise correlation, annualised return/volatility, Sharpe (zero risk-free rate), max drawdown, best/worst day, observation coverage/missingness and downloadable price/return CSV files. Multi-symbol prices are requested in a bulk Yahoo Finance download; requests are cached for 15 minutes and users can force a refresh. Instruments are fetched only when selected. Provider symbols may be unavailable or return incomplete history; missing observations are retained rather than manufactured.
 
+### 5. Futures & Options
+- Yahoo Finance option-chain lookup for underlyings / expiries where Yahoo exposes them
+- Calls and puts table with strike, last price, bid/ask, volume, open interest and implied volatility (when returned)
+- Call OI, put OI, put/call OI ratio, strike-level OI chart and an OI-based expiry max-pain estimate
+- Yahoo continuous futures proxy monitor for global contracts such as Brent, WTI, gold, silver, natural gas, E-mini S&P 500 and 10-year Treasury note
+- NSE futures CSV import with price and open-interest visualisation
+- NSE options CSV import with strike-level CE/PE open-interest analysis and downloadable cleaned data
+
+**Critical data limitation:** Yahoo Finance does not reliably expose complete NSE stock/index futures and options chains. NSE option-chain availability through Yahoo may be empty for Indian underlyings; use the NSE data import tab with an exchange or licensed-vendor CSV for actual NSE derivatives. Yahoo continuous futures tickers are stitched global proxy series, not specific NSE expiries or executable contracts. Uploaded data is analysed as supplied and should be checked against the original exchange file. PCR and max pain are descriptive statistics, not trading signals.
+
 ## Run the econometric analysis to CSV
 
 ~~~bash
@@ -107,7 +117,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 
 ## Repository layout
 
-- `dashboard_app.py` — interactive four-workspace trading dashboard
+- `dashboard_app.py` — interactive five-workspace trading dashboard
 - `.streamlit/config.toml` — visual theme
 - `generate_sample_data.py` — deterministic synthetic sample generator
 - `nse_reliance_analysis.py` — NSE/Reliance market-linkage research
