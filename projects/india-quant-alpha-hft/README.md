@@ -53,7 +53,7 @@ The strategy panel is a reproducible synthetic pairs-trading demonstration. It i
 - Auto-refreshing intraday market pulse (1m / 5m / 15m / 60m bars), latest-bar price cards and indexed intraday chart
 - Configurable refresh cadence and manual pull-latest control
 
-The market workspace uses Yahoo Finance symbols as research proxies. The intraday panel periodically refreshes recent bars while the app is open; choose 1m, 5m, 15m or 60m intervals and a 30–300 second refresh cadence. The refresh is provider polling, not a guaranteed real-time exchange stream. Yahoo Finance may delay, omit or rate-limit intraday data, and availability differs by symbol. Streamlit must remain running (locally or on a deployed host) for the dashboard to refresh; GitHub itself does not run the app.
+The market workspace uses Yahoo Finance symbols as research proxies. Historical adjusted closes are fetched in bulk and cached for 15 minutes; the data explorer can separately fetch OHLCV history for candlestick, moving-average and volume charts. The intraday panel periodically refreshes recent bars while the app is open; choose 1m, 5m, 15m or 60m intervals and a 30–300 second refresh cadence. The refresh is provider polling, not a guaranteed real-time exchange stream. Yahoo Finance may delay, omit or rate-limit intraday data, and availability differs by symbol. Streamlit must remain running (locally or on a deployed host) for the dashboard to refresh; GitHub itself does not run the app.
 
 The market workspace uses Yahoo Finance symbols as research proxies:
 - Reliance Industries: `RELIANCE.NS`
@@ -78,7 +78,7 @@ Selectable daily price history for a 23-instrument research universe:
 - **Indian indices / volatility:** NIFTY 50, Bank NIFTY, NIFTY Energy and India VIX.
 - **Cross-asset proxies:** USD/INR, Brent crude, WTI crude and gold.
 
-Interactive views include latest available price/session move cards, rebased performance, daily-return distributions, return correlation heatmaps, rolling pairwise correlation, observation coverage/missingness and downloadable price/return CSV files. Instruments are fetched only when selected. Provider symbols may be unavailable or return incomplete history; missing observations are retained rather than manufactured.
+Interactive views include latest available price/session move cards, rebased performance, OHLC candlesticks or close-price charts, configurable simple moving averages, reported volume, daily-return distributions, return correlation heatmaps, rolling pairwise correlation, annualised return/volatility, Sharpe (zero risk-free rate), max drawdown, best/worst day, observation coverage/missingness and downloadable price/return CSV files. Multi-symbol prices are requested in a bulk Yahoo Finance download; requests are cached for 15 minutes and users can force a refresh. Instruments are fetched only when selected. Provider symbols may be unavailable or return incomplete history; missing observations are retained rather than manufactured.
 
 ## Run the econometric analysis to CSV
 
