@@ -336,6 +336,105 @@ def risk_dashboard():
         return
     weights = pd.Series({k:v/weight_sum for k,v in raw_weights.items()})
     st.caption("Normalised weights: " + " · ".join(f"{k} {v:.0%}" for k,v in weights.items()))
+
+    # INR contribution calculator: existing portfolio value + proposed new money.
+    st.markdown("#### INR portfolio contribution calculator")
+    st.caption("Model how a fresh investment changes rupee exposure and constituent weights. Existing weights above are treated as your current portfolio mix.")
+    equity_assets = [a for a in selected if a in {
+        "RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK",
+        "KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS",
+        "MARUTI","SUN_PHARMA"
+    }]
+    if equity_assets:
+        calc_left, calc_right = st.columns(2)
+        with calc_left:
+            existing_capital = st.number_input(
+                "Current portfolio value (INR)", min_value=0.0, value=1000000.0,
+                step=50000.0, format="%.2f", key="contrib_existing_capital"
+            )
+        with calc_right:
+            new_money = st.number_input(
+                "New money to invest (INR)", min_value=0.0, value=100000.0,
+                step=10000.0, format="%.2f", key="contrib_new_money"
+            )
+        allocation_method = st.selectbox(
+            "How should the new money be allocated?",
+            ["Maintain current stock weights", "Equal-weight selected stocks", "Custom allocation"],
+            key="contrib_allocation_method"
+        )
+        if allocation_method == "Maintain current stock weights":
+            equity_base = weights.reindex(equity_assets).fillna(0.0)
+            allocation = equity_base / equity_base.sum() if equity_base.sum() > 0 else pd.Series(1/len(equity_assets), index=equity_assets)
+        elif allocation_method == "Equal-weight selected stocks":
+            allocation = pd.Series(1/len(equity_assets), index=equity_assets)
+        else:
+            st.caption("Set the relative split for the new contribution. These inputs are normalised to 100%.")
+            custom_raw = {}
+            custom_cols = st.columns(min(4, len(equity_assets)))
+            for j, asset in enumerate(equity_assets):
+                with custom_cols[j % len(custom_cols)]:
+                    custom_raw[asset] = st.slider(
+                        f"New {asset} allocation", 0, 100, int(100/len(equity_assets)),
+                        5, key=f"contrib_alloc_{asset}"
+                    )
+            custom_total = sum(custom_raw.values())
+            allocation = (pd.Series(custom_raw, dtype=float) / custom_total
+                          if custom_total > 0 else pd.Series(1/len(equity_assets), index=equity_assets))
+        if existing_capital + new_money <= 0:
+            st.info("Enter a current portfolio value or a new investment amount to calculate post-investment weights.")
+        else:
+            contribution = pd.Series(0.0, index=selected)
+            contribution.loc[equity_assets] = allocation * new_money
+            current_values = weights * existing_capital
+            post_values = current_values.add(contribution, fill_value=0.0)
+            post_weights = post_values / (existing_capital + new_money)
+            old_port_ret = returns[weights.index].mul(weights, axis=1).sum(axis=1)
+            post_port_ret = returns[post_weights.index].mul(post_weights, axis=1).sum(axis=1)
+            old_vol = old_port_ret.std() * np.sqrt(252)
+            post_vol = post_port_ret.std() * np.sqrt(252)
+            old_var = -old_port_ret.quantile(0.05)
+            post_var = -post_port_ret.quantile(0.05)
+            old_ann_return = old_port_ret.mean() * 252
+            post_ann_return = post_port_ret.mean() * 252
+            latest_prices = usable.iloc[-1].reindex(selected)
+            calc_table = pd.DataFrame({
+                "Current weight (%)": weights * 100,
+                "New money (INR)": contribution,
+                "New money allocation (%)": (contribution / new_money * 100) if new_money > 0 else 0.0,
+                "Post-investment value (INR)": post_values,
+                "Post-investment weight (%)": post_weights * 100,
+                "Weight change (pp)": (post_weights - weights) * 100,
+                "Latest price (provider units)": latest_prices,
+                "Indicative added units": contribution / latest_prices.replace(0, np.nan)
+            })
+            st.markdown("**Post-investment allocation impact**")
+            st.dataframe(calc_table.style.format({
+                "Current weight (%)":"{:.2f}", "New money (INR)":"₹{:,.2f}",
+                "New money allocation (%)":"{:.2f}", "Post-investment value (INR)":"₹{:,.2f}",
+                "Post-investment weight (%)":"{:.2f}", "Weight change (pp)":"{:+.2f}",
+                "Latest price (provider units)":"{:,.2f}", "Indicative added units":"{:,.3f}"
+            }, na_rep="—"), use_container_width=True)
+            st.markdown("**Estimated portfolio-level effect**")
+            metric_row([
+                ("TOTAL CAPITAL AFTER INVESTMENT", f"₹{existing_capital + new_money:,.0f}", f"New contribution ₹{new_money:,.0f}"),
+                ("ANNUALISED VOLATILITY", f"{post_vol:.2%}", f"{post_vol-old_vol:+.2%} vs current mix"),
+                ("HISTORICAL 95% VaR", f"{post_var:.2%}", f"{post_var-old_var:+.2%} vs current mix"),
+                ("HISTORICAL ANNUALISED RETURN", f"{post_ann_return:.2%}", f"{post_ann_return-old_ann_return:+.2%} vs current mix"),
+            ])
+            fig_alloc = go.Figure()
+            fig_alloc.add_trace(go.Bar(name="Before", x=selected, y=weights.reindex(selected).fillna(0)*100))
+            fig_alloc.add_trace(go.Bar(name="After contribution", x=selected, y=post_weights.reindex(selected).fillna(0)*100))
+            fig_alloc.update_layout(title="Constituent weights · before vs after investment",
+                                    yaxis_title="Portfolio weight (%)", barmode="group")
+            st.plotly_chart(polish(fig_alloc, 340), use_container_width=True)
+            st.download_button(
+                "Download INR contribution analysis (CSV)",
+                calc_table.to_csv(index=True).encode("utf-8"),
+                file_name="india_quant_inr_contribution_analysis.csv", mime="text/csv"
+            )
+            st.caption("Indicative units = rupee allocation ÷ latest downloaded price. This is a sizing estimate, not an order: it excludes lot sizes, fractional-share restrictions, brokerage, taxes, slippage, liquidity, cash drag and price movement. Historical volatility, VaR and return differences are sample estimates, not forecasts. Index/FX/commodity proxies in the wider risk portfolio are not included as investable stocks in this calculator.")
+    else:
+        st.info("Select at least one individual equity (for example RELIANCE, TCS, INFOSYS or HDFC_BANK) to use the INR contribution calculator.")
     port_ret = returns[weights.index].mul(weights, axis=1).sum(axis=1)
     equity = np.exp(port_ret.cumsum())
     drawdown = equity / equity.cummax() - 1
