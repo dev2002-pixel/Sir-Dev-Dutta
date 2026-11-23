@@ -14,6 +14,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 
 st.set_page_config(page_title="India Quant Desk", page_icon="📈", layout="wide")
@@ -108,6 +109,33 @@ def download_market(start_date, end_date):
     if not series:
         return pd.DataFrame()
     return pd.concat(series.values(), axis=1).sort_index().dropna(how="all")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def download_intraday(period, interval):
+    """Download recent intraday bars from Yahoo Finance (research proxy, not exchange feed)."""
+    symbols = {"RELIANCE": "RELIANCE.NS", "NIFTY50": "^NSEI",
+               "BANKNIFTY": "^NSEBANK", "NIFTYENERGY": "^CNXENERGY"}
+    frames = {}
+    for label, ticker in symbols.items():
+        try:
+            raw = yf.download(ticker, period=period, interval=interval,
+                              auto_adjust=True, progress=False, threads=False)
+            if raw.empty or "Close" not in raw:
+                continue
+            close = raw["Close"]
+            volume = raw["Volume"] if "Volume" in raw else None
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+            frame = pd.DataFrame({"Close": close})
+            if volume is not None:
+                if isinstance(volume, pd.DataFrame):
+                    volume = volume.iloc[:, 0]
+                frame["Volume"] = volume
+            frames[label] = frame.dropna(subset=["Close"])
+        except Exception:
+            continue
+    return frames
 
 def pairs_dashboard():
     st.markdown('<div class="section-kicker">01 / strategy research</div>', unsafe_allow_html=True)
@@ -220,6 +248,46 @@ def market_dashboard():
     st.markdown('<div class="section-kicker">02 / India market intelligence</div>', unsafe_allow_html=True)
     st.subheader("NSE · Reliance market-linkage terminal")
     st.caption("Compare Reliance with NIFTY 50, Bank NIFTY and NIFTY Energy. All market observations below are Yahoo Finance adjusted-price proxies.")
+
+    st.markdown("### Live market pulse · intraday bars")
+    live_col, interval_col, period_col, refresh_col = st.columns([1.15, 1, 1, 1])
+    with live_col:
+        live_enabled = st.toggle("Auto-refresh feed", value=True)
+    with interval_col:
+        intraday_interval = st.selectbox("Bar interval", ["1m", "5m", "15m", "60m"], index=1)
+    period_map = {"1m": "1d", "5m": "5d", "15m": "1mo", "60m": "3mo"}
+    with period_col:
+        refresh_seconds = st.selectbox("Refresh cadence", [30, 60, 120, 300], index=1)
+    with refresh_col:
+        force_refresh = st.button("Pull latest bars", use_container_width=True)
+    if live_enabled:
+        st_autorefresh(interval=refresh_seconds * 1000, key="india_quant_live_refresh")
+    if force_refresh:
+        download_intraday.clear()
+    intraday = download_intraday(period_map[intraday_interval], intraday_interval)
+    available = [name for name in ["RELIANCE", "NIFTY50", "BANKNIFTY", "NIFTYENERGY"] if name in intraday and not intraday[name].empty]
+    if available:
+        latest_cols = st.columns(len(available))
+        for col, name in zip(latest_cols, available):
+            frame = intraday[name]
+            last = float(frame["Close"].iloc[-1])
+            previous = float(frame["Close"].iloc[-2]) if len(frame) > 1 else last
+            change = (last / previous - 1) * 100 if previous else 0
+            col.metric(name, f"{last:,.2f}", f"{change:+.2f}% · last bar")
+        live_prices = pd.concat({name: intraday[name]["Close"].rename(name) for name in available}, axis=1)
+        live_indexed = live_prices / live_prices.ffill().bfill().iloc[0] * 100
+        live_fig = go.Figure()
+        for name in available:
+            live_fig.add_trace(go.Scatter(x=live_indexed.index, y=live_indexed[name],
+                                          name=name, line=dict(color=COLORS.get(name, MUTED), width=1.8)))
+        live_fig.update_layout(title=f"Intraday relative move · {intraday_interval} bars · rebased to 100",
+                               yaxis_title="Indexed price")
+        st.plotly_chart(polish(live_fig, 300), use_container_width=True)
+        latest_stamp = max(frame.index.max() for frame in intraday.values() if not frame.empty)
+        st.caption(f"Latest bar timestamp returned by provider: {latest_stamp}. Provider: Yahoo Finance. Auto-refresh: {'ON' if live_enabled else 'OFF'} · every {refresh_seconds}s.")
+    else:
+        st.warning("No intraday bars returned. The provider may be closed, rate-limited, or unavailable for one or more symbols. Try 5m/15m bars or refresh later.")
+    st.caption("Data-integrity note: this is a periodically refreshed Yahoo Finance feed, not guaranteed real-time exchange data. Intraday history and availability vary by ticker and provider; values may be delayed, missing or revised.")
     with st.sidebar:
         st.markdown("### Market data controls")
         start = st.date_input("Start date", value=pd.Timestamp("2020-01-01").date(),
