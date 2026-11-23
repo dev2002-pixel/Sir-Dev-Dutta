@@ -671,6 +671,226 @@ def data_explorer_dashboard():
         st.caption("Provider: Yahoo Finance via yfinance. Different market calendars, currencies, trading hours and symbol histories are not harmonised. No missing prices are synthetically filled.")
     st.caption("Research use only. Yahoo Finance is a convenience data source, not a licensed exchange feed. Verify timestamps, corporate actions and contract specifications before using results for trading.")
 
+
+EQUITY_PRESETS = {
+    "India · Large caps": {
+        "RELIANCE":"RELIANCE.NS","TCS":"TCS.NS","INFOSYS":"INFY.NS",
+        "HDFC BANK":"HDFCBANK.NS","ICICI BANK":"ICICIBANK.NS","SBI":"SBIN.NS",
+        "AXIS BANK":"AXISBANK.NS","KOTAK BANK":"KOTAKBANK.NS","L&T":"LT.NS",
+        "ITC":"ITC.NS","HINDUSTAN UNILEVER":"HINDUNILVR.NS",
+        "BHARTI AIRTEL":"BHARTIARTL.NS","TATA MOTORS":"TATAMOTORS.NS",
+        "MARUTI":"MARUTI.NS","SUN PHARMA":"SUNPHARMA.NS"
+    },
+    "India · Additional equities": {
+        "BAJAJ FINANCE":"BAJFINANCE.NS","BAJAJ FINSERV":"BAJAJFINSV.NS",
+        "ASIAN PAINTS":"ASIANPAINT.NS","TITAN":"TITAN.NS","ULTRATECH CEMENT":"ULTRACEMCO.NS",
+        "WIPRO":"WIPRO.NS","HCLTECH":"HCLTECH.NS","TECH MAHINDRA":"TECHM.NS",
+        "NTPC":"NTPC.NS","POWER GRID":"POWERGRID.NS","ONGC":"ONGC.NS",
+        "COAL INDIA":"COALINDIA.NS","ADANI PORTS":"ADANIPORTS.NS",
+        "JSW STEEL":"JSWSTEEL.NS","TATA STEEL":"TATASTEEL.NS",
+        "BHARAT ELECTRONICS":"BEL.NS","TRENT":"TRENT.NS","ZOMATO":"ETERNAL.NS"
+    },
+    "US · Mega caps": {
+        "APPLE":"AAPL","MICROSOFT":"MSFT","NVIDIA":"NVDA","AMAZON":"AMZN",
+        "ALPHABET":"GOOGL","META":"META","BROADCOM":"AVGO","TESLA":"TSLA",
+        "BERKSHIRE HATHAWAY":"BRK-B","JPMORGAN":"JPM","VISA":"V",
+        "ELI LILLY":"LLY","WALMART":"WMT","NETFLIX":"NFLX","AMD":"AMD",
+        "ORACLE":"ORCL","COSTCO":"COST","GOLDMAN SACHS":"GS"
+    },
+    "US · ETFs & benchmarks": {
+        "S&P 500 ETF":"SPY","NASDAQ 100 ETF":"QQQ","TOTAL US MARKET":"VTI",
+        "RUSSELL 2000 ETF":"IWM","SEMICONDUCTOR ETF":"SMH","FINANCIALS ETF":"XLF"
+    }
+}
+
+@st.cache_data(ttl=900, show_spinner=False)
+def download_equity_history(tickers, start_date, end_date, interval="1d"):
+    """Bulk adjusted OHLCV history for the equity workspace."""
+    tickers = list(dict.fromkeys(tickers))
+    if not tickers:
+        return pd.DataFrame(), {}
+    try:
+        raw = yf.download(
+            tickers=tickers, start=start_date, end=end_date, interval=interval,
+            auto_adjust=True, progress=False, threads=True, group_by="column",
+            actions=False, multi_level_index=True
+        )
+        if raw is None or raw.empty:
+            return pd.DataFrame(), {}
+        if isinstance(raw.columns, pd.MultiIndex):
+            close = raw["Close"].copy() if "Close" in raw.columns.get_level_values(0) else pd.DataFrame()
+            if isinstance(close, pd.Series):
+                close = close.to_frame(name=tickers[0])
+            # yfinance versions may put ticker on either level.
+            if isinstance(close.columns, pd.MultiIndex):
+                close.columns = close.columns.get_level_values(-1)
+            if len(tickers) == 1 and close.empty:
+                close = raw.xs(tickers[0], axis=1, level=-1, drop_level=True)[["Close"]].rename(columns={"Close":tickers[0]})
+        else:
+            close = raw[["Close"]].rename(columns={"Close":tickers[0]}) if "Close" in raw else pd.DataFrame()
+        close = close[[c for c in tickers if c in close.columns]].apply(pd.to_numeric, errors="coerce")
+        close.index = pd.to_datetime(close.index)
+        if close.index.tz is not None:
+            close.index = close.index.tz_localize(None)
+        ohlcv = {}
+        for ticker in tickers:
+            try:
+                if isinstance(raw.columns, pd.MultiIndex):
+                    fields = raw.xs(ticker, axis=1, level=-1, drop_level=True)
+                elif len(tickers) == 1:
+                    fields = raw.copy()
+                else:
+                    continue
+                keep = [c for c in ["Open","High","Low","Close","Volume"] if c in fields.columns]
+                frame = fields[keep].copy()
+                frame.index = pd.to_datetime(frame.index)
+                if frame.index.tz is not None:
+                    frame.index = frame.index.tz_localize(None)
+                ohlcv[ticker] = frame.sort_index()
+            except Exception:
+                continue
+        return close.sort_index().dropna(how="all"), ohlcv
+    except Exception:
+        return pd.DataFrame(), {}
+
+def equity_markets_dashboard():
+    st.markdown('<div class="section-kicker">08 / global equity research</div>', unsafe_allow_html=True)
+    st.subheader("Equity markets · India & United States")
+    st.caption("Multi-stock market monitor with adjusted OHLCV history, technical indicators, relative performance and risk analytics.")
+    all_presets = {}
+    for group in EQUITY_PRESETS.values():
+        all_presets.update(group)
+    left, mid, right = st.columns([1.25,1,1])
+    with left:
+        groups = st.multiselect("Universe", list(EQUITY_PRESETS), default=["India · Large caps","US · Mega caps"])
+    group_symbols = {}
+    for group in groups:
+        group_symbols.update(EQUITY_PRESETS[group])
+    with mid:
+        selected_names = st.multiselect("Stocks / ETFs", list(group_symbols), default=list(group_symbols)[:8])
+    with right:
+        interval_label = st.selectbox("Bar frequency", ["Daily","Weekly"], index=0)
+    custom = st.text_input("Additional Yahoo tickers (comma-separated)", placeholder="e.g. ^NSEI, NVDA, 7203.T")
+    tickers = [group_symbols[n] for n in selected_names]
+    tickers += [x.strip().upper() for x in custom.split(",") if x.strip()]
+    tickers = list(dict.fromkeys(tickers))
+    date_left, date_right, refresh_col = st.columns([1,1,1])
+    with date_left:
+        start = st.date_input("History from", value=pd.Timestamp("2021-01-01").date(), key="equity_start")
+    with date_right:
+        end = st.date_input("History to (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key="equity_end")
+    with refresh_col:
+        st.write("")
+        refresh = st.button("↻ Refresh equity data", type="primary", use_container_width=True)
+    if start >= end:
+        st.error("Start date must be earlier than end date.")
+        return
+    if not tickers:
+        st.info("Choose at least one stock or enter a Yahoo ticker.")
+        return
+    if len(tickers) > 30:
+        st.warning("Please limit one request to 30 tickers to keep downloads reliable.")
+        return
+    if refresh:
+        download_equity_history.clear()
+    interval = "1d" if interval_label == "Daily" else "1wk"
+    with st.spinner(f"Downloading {len(tickers)} equity histories…"):
+        prices, ohlcv = download_equity_history(tuple(tickers), str(start), str(end), interval)
+    if prices.empty:
+        st.warning("No stock prices returned. Check ticker spelling, date range or Yahoo availability.")
+        return
+    available = [t for t in tickers if t in prices.columns and prices[t].notna().any()]
+    prices = prices[available].dropna(how="all")
+    if not available:
+        st.warning("No selected ticker returned usable prices.")
+        return
+    rets = np.log(prices.where(prices > 0)).diff()
+    last = prices.ffill().iloc[-1]
+    prev = prices.ffill().iloc[-2] if len(prices) > 1 else last
+    st.markdown("#### Latest available observations")
+    metric_cols = st.columns(min(4,len(available)))
+    for i,ticker in enumerate(available):
+        change = (last[ticker]/prev[ticker]-1)*100 if pd.notna(prev[ticker]) and prev[ticker] else np.nan
+        metric_cols[i%len(metric_cols)].metric(ticker, f"{last[ticker]:,.2f}", f"{change:+.2f}% · last bar" if np.isfinite(change) else "—")
+    st.caption(f"{len(available)} tickers returned · last observation {prices.dropna(how='all').index[-1]:%Y-%m-%d} · Yahoo Finance research data; not guaranteed live.")
+    tabs = st.tabs(["Single-stock technicals","Relative performance","Risk & correlation","Raw data"])
+    with tabs[0]:
+        chosen = st.selectbox("Stock detail", available, key="equity_detail")
+        detail = ohlcv.get(chosen, pd.DataFrame())
+        if detail.empty or "Close" not in detail:
+            st.info("OHLC data unavailable for this ticker. Using the adjusted-close series.")
+            detail = pd.DataFrame({"Close":prices[chosen]})
+        close = pd.to_numeric(detail["Close"],errors="coerce")
+        fast = st.slider("Fast SMA",5,100,20,5,key="eq_sma_fast")
+        slow = st.slider("Slow SMA",20,250,50,5,key="eq_sma_slow")
+        delta = close.diff()
+        gain = delta.clip(lower=0).ewm(alpha=1/14,adjust=False,min_periods=14).mean()
+        loss = (-delta.clip(upper=0)).ewm(alpha=1/14,adjust=False,min_periods=14).mean()
+        rs = gain / loss.replace(0,np.nan)
+        rsi = 100 - 100/(1+rs)
+        ema12 = close.ewm(span=12,adjust=False).mean()
+        ema26 = close.ewm(span=26,adjust=False).mean()
+        macd = ema12-ema26
+        signal = macd.ewm(span=9,adjust=False).mean()
+        midline = close.rolling(20).mean()
+        band = close.rolling(20).std()*2
+        price_fig = go.Figure()
+        if {"Open","High","Low","Close"}.issubset(detail.columns):
+            price_fig.add_trace(go.Candlestick(x=detail.index,open=detail["Open"],high=detail["High"],low=detail["Low"],close=detail["Close"],name=chosen))
+        else:
+            price_fig.add_trace(go.Scatter(x=close.index,y=close,name=chosen,line=dict(color=CYAN,width=1.8)))
+        price_fig.add_trace(go.Scatter(x=close.index,y=close.rolling(fast).mean(),name=f"SMA {fast}",line=dict(color=ORANGE,width=1.2)))
+        price_fig.add_trace(go.Scatter(x=close.index,y=close.rolling(slow).mean(),name=f"SMA {slow}",line=dict(color=BLUE,width=1.2)))
+        price_fig.add_trace(go.Scatter(x=close.index,y=midline+band,name="Bollinger upper",line=dict(color=MUTED,width=1,dash="dot")))
+        price_fig.add_trace(go.Scatter(x=close.index,y=midline-band,name="Bollinger lower",line=dict(color=MUTED,width=1,dash="dot"),fill="tonexty",fillcolor="rgba(147,164,184,.08)"))
+        price_fig.update_layout(title=f"{chosen} · adjusted price & technical overlays",xaxis_rangeslider_visible=False)
+        st.plotly_chart(polish(price_fig,450),use_container_width=True)
+        indicator_a,indicator_b = st.columns(2)
+        with indicator_a:
+            rf=go.Figure(go.Scatter(x=rsi.index,y=rsi,name="RSI(14)",line=dict(color=CYAN)))
+            rf.add_hline(y=70,line_dash="dash",line_color=RED); rf.add_hline(y=30,line_dash="dash",line_color=GREEN)
+            rf.update_layout(title="Relative strength index · 14")
+            st.plotly_chart(polish(rf,260),use_container_width=True)
+        with indicator_b:
+            mf=go.Figure()
+            mf.add_trace(go.Scatter(x=macd.index,y=macd,name="MACD",line=dict(color=BLUE)))
+            mf.add_trace(go.Scatter(x=signal.index,y=signal,name="Signal",line=dict(color=ORANGE)))
+            mf.add_trace(go.Bar(x=(macd-signal).index,y=macd-signal,name="Histogram",opacity=.35))
+            mf.update_layout(title="MACD · 12 / 26 / 9")
+            st.plotly_chart(polish(mf,260),use_container_width=True)
+        if "Volume" in detail and detail["Volume"].notna().any():
+            vf=go.Figure(go.Bar(x=detail.index,y=detail["Volume"],name="Volume"))
+            vf.update_layout(title=f"{chosen} · reported volume")
+            st.plotly_chart(polish(vf,220),use_container_width=True)
+    with tabs[1]:
+        rebased = prices.div(prices.apply(lambda s:s.dropna().iloc[0] if s.notna().any() else np.nan)).mul(100)
+        f=go.Figure()
+        for ticker in available:
+            f.add_trace(go.Scatter(x=rebased.index,y=rebased[ticker],name=ticker))
+        f.update_layout(title="Relative performance · growth of 100",yaxis_title="Indexed value")
+        st.plotly_chart(polish(f,420),use_container_width=True)
+        st.caption("Cross-market comparisons are in each instrument's local quote currency; this chart does not convert INR to USD.")
+    with tabs[2]:
+        aligned=rets[available].dropna()
+        if len(aligned)>=3:
+            corr=aligned.corr()
+            heat=px.imshow(corr,text_auto=".2f",zmin=-1,zmax=1,color_continuous_scale="RdBu_r",aspect="auto",title="Daily / weekly return correlation")
+            heat.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(polish(heat,420),use_container_width=True)
+        ann=rets.std()*np.sqrt(252 if interval=="1d" else 52)
+        total=(prices.ffill().iloc[-1]/prices.apply(lambda s:s.dropna().iloc[0])-1)
+        stats=pd.DataFrame({"Period return":total,"Annualised volatility":ann,"Mean return (annualised)":rets.mean()*(252 if interval=="1d" else 52)})
+        st.dataframe(stats.style.format("{:.2%}"),use_container_width=True)
+        st.caption("Volatility and annualised mean use 252 daily or 52 weekly periods. Cross-market calendars are not harmonised; estimates are descriptive.")
+    with tabs[3]:
+        st.dataframe(prices.tail(100),use_container_width=True)
+        st.download_button("Download adjusted close prices CSV",prices.to_csv().encode("utf-8"),"equity_adjusted_prices.csv","text/csv")
+        st.download_button("Download log returns CSV",rets.to_csv().encode("utf-8"),"equity_log_returns.csv","text/csv")
+        detail_export = ohlcv.get(st.selectbox("OHLCV export ticker",available,key="eq_export_ticker"),pd.DataFrame())
+        if not detail_export.empty:
+            st.download_button("Download selected OHLCV CSV",detail_export.to_csv().encode("utf-8"),"equity_ohlcv.csv","text/csv")
+    st.caption("Source: Yahoo Finance through yfinance. Adjusted OHLC prices include provider adjustments; volume is provider-reported. yfinance describes its interface as intended for research/personal use—review Yahoo's terms and data rights before redistribution.")
+
 def market_dashboard():
     st.markdown('<div class="section-kicker">02 / India market intelligence</div>', unsafe_allow_html=True)
     st.subheader("NSE · Reliance market-linkage terminal")
@@ -1284,7 +1504,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Equity Markets", "Portfolio & Risk Lab", "Multi-Asset Data Explorer", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
@@ -1292,6 +1512,8 @@ if page == "Trading & HFT":
     pairs_dashboard()
 elif page == "NSE × Reliance":
     market_dashboard()
+elif page == "Equity Markets":
+    equity_markets_dashboard()
 elif page == "Portfolio & Risk Lab":
     risk_dashboard()
 elif page == "Multi-Asset Data Explorer":
