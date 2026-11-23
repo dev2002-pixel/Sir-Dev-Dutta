@@ -89,10 +89,21 @@ def synthetic_pair_data():
         "asset_b": np.exp(np.log(100.0) + common),
     }).set_index("date")
 
+MARKET_UNIVERSE = {
+    "RELIANCE": "RELIANCE.NS", "TCS": "TCS.NS", "INFOSYS": "INFY.NS",
+    "HDFC_BANK": "HDFCBANK.NS", "ICICI_BANK": "ICICIBANK.NS", "SBIN": "SBIN.NS",
+    "AXIS_BANK": "AXISBANK.NS", "KOTAK_BANK": "KOTAKBANK.NS", "LT": "LT.NS",
+    "ITC": "ITC.NS", "HINDUNILVR": "HINDUNILVR.NS", "BHARTI_AIRTEL": "BHARTIARTL.NS",
+    "TATA_MOTORS": "TATAMOTORS.NS", "MARUTI": "MARUTI.NS", "SUN_PHARMA": "SUNPHARMA.NS",
+    "NIFTY50": "^NSEI", "BANKNIFTY": "^NSEBANK", "NIFTYENERGY": "^CNXENERGY",
+    "INDIA_VIX": "^INDIAVIX", "USDINR": "INR=X", "BRENT_CRUDE": "BZ=F",
+    "WTI_CRUDE": "CL=F", "GOLD": "GC=F"
+}
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def download_market(start_date, end_date):
-    symbols = {"RELIANCE": "RELIANCE.NS", "NIFTY50": "^NSEI",
-               "BANKNIFTY": "^NSEBANK", "NIFTYENERGY": "^CNXENERGY"}
+def download_market(start_date, end_date, selected_labels=None):
+    labels = list(selected_labels) if selected_labels else ["RELIANCE", "NIFTY50", "BANKNIFTY", "NIFTYENERGY"]
+    symbols = {label: MARKET_UNIVERSE[label] for label in labels if label in MARKET_UNIVERSE}
     series = {}
     for label, ticker in symbols.items():
         try:
@@ -254,10 +265,11 @@ def risk_dashboard():
         risk_start = st.date_input("Risk sample start", value=pd.Timestamp("2020-01-01").date(),
                                    min_value=pd.Timestamp("2010-01-01").date(), key="risk_start")
         risk_end = st.date_input("Risk sample end (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1), key="risk_end")
+        risk_assets = st.multiselect("Download assets", list(MARKET_UNIVERSE), default=["RELIANCE","NIFTY50","BANKNIFTY","TCS","HDFC_BANK"], key="risk_assets")
         risk_refresh = st.button("Refresh risk data")
     if risk_refresh:
         download_market.clear()
-    prices = download_market(str(risk_start), str(risk_end))
+    prices = download_market(str(risk_start), str(risk_end), risk_assets)
     if prices.empty or len(prices.columns) < 2:
         st.warning("Not enough market series were returned. Try a different date range or refresh.")
         return
@@ -368,6 +380,87 @@ def risk_dashboard():
         st.download_button("Download normalised weights (CSV)",weights.rename("weight").to_csv().encode("utf-8"),
                            file_name="india_quant_portfolio_weights.csv",mime="text/csv")
 
+
+def data_explorer_dashboard():
+    st.markdown('<div class="section-kicker">04 / cross-asset data terminal</div>', unsafe_allow_html=True)
+    st.subheader("India & global markets · multi-asset data explorer")
+    st.caption("Select equities, indices, FX, volatility and commodity proxies. Historical prices are fetched on demand; intraday availability varies by instrument.")
+    c1,c2,c3=st.columns([1.2,1,1])
+    with c1:
+        chosen=st.multiselect("Choose instruments",list(MARKET_UNIVERSE),
+            default=["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"])
+    with c2:
+        start=st.date_input("History from",value=pd.Timestamp("2021-01-01").date(),key="explorer_start")
+    with c3:
+        end=st.date_input("History to (exclusive)",value=pd.Timestamp.today().date()+pd.Timedelta(days=1),key="explorer_end")
+    if not chosen:
+        st.info("Choose at least one instrument.")
+        return
+    if st.button("Fetch selected market data",type="primary"):
+        download_market.clear()
+    with st.spinner("Fetching selected instruments from Yahoo Finance…"):
+        prices=download_market(str(start),str(end),chosen)
+    if prices.empty:
+        st.warning("No prices were returned. Some symbols may be unavailable or unsupported by the data provider.")
+        return
+    returns=np.log(prices.where(prices>0)).diff()
+    valid_returns=returns.dropna(how="all")
+    if valid_returns.empty:
+        st.warning("The selected instruments do not have enough overlapping observations.")
+        return
+    latest=prices.ffill().iloc[-1]
+    previous=prices.ffill().iloc[-2] if len(prices)>1 else latest
+    cols=st.columns(min(4,len(prices.columns)))
+    for i,name in enumerate(prices.columns):
+        with cols[i%len(cols)]:
+            change=(latest[name]/previous[name]-1)*100 if pd.notna(previous[name]) and previous[name]!=0 else np.nan
+            st.metric(name,f"{latest[name]:,.2f}" if pd.notna(latest[name]) else "—",
+                      f"{change:+.2f}% latest session" if np.isfinite(change) else "—")
+    tab1,tab2,tab3=st.tabs(["Price & returns","Cross-asset relationships","Data quality & export"])
+    with tab1:
+        indexed=prices.div(prices.ffill().bfill().iloc[0]).mul(100)
+        fig=go.Figure()
+        for name in indexed.columns:
+            fig.add_trace(go.Scatter(x=indexed.index,y=indexed[name],name=name,mode="lines"))
+        fig.update_layout(title="Normalised price performance · start = 100",yaxis_title="Indexed level")
+        st.plotly_chart(polish(fig,420),use_container_width=True)
+        selected_return=st.selectbox("Return series for distribution",list(valid_returns.columns))
+        fig=go.Figure()
+        fig.add_trace(go.Histogram(x=valid_returns[selected_return].dropna()*100,nbinsx=50,name=selected_return))
+        fig.update_layout(title=f"{selected_return} daily log-return distribution",xaxis_title="Daily log return (%)",yaxis_title="Frequency")
+        st.plotly_chart(polish(fig,300),use_container_width=True)
+    with tab2:
+        aligned=valid_returns.dropna()
+        if len(aligned)>=3 and len(aligned.columns)>=2:
+            corr=aligned.corr()
+            fig=px.imshow(corr,text_auto=".2f",zmin=-1,zmax=1,color_continuous_scale="RdBu_r",aspect="auto",title="Daily return correlation matrix")
+            fig.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(polish(fig,430),use_container_width=True)
+            rolling_n=st.select_slider("Rolling correlation window",options=[20,40,60,90,120],value=60,key="explorer_roll")
+            pair=st.multiselect("Rolling correlation pair",list(aligned.columns),default=list(aligned.columns[:2]),max_selections=2)
+            if len(pair)==2:
+                rc=aligned[pair[0]].rolling(rolling_n).corr(aligned[pair[1]])
+                fig=go.Figure()
+                fig.add_trace(go.Scatter(x=rc.index,y=rc,name=f"{pair[0]} vs {pair[1]}",line=dict(color=CYAN,width=1.8)))
+                fig.add_hline(y=0,line_color=GRID)
+                fig.update_layout(title=f"{rolling_n}-session rolling correlation",yaxis=dict(range=[-1,1]))
+                st.plotly_chart(polish(fig,290),use_container_width=True)
+        else:
+            st.info("Select at least two instruments with overlapping daily returns to view dependence.")
+    with tab3:
+        coverage=pd.DataFrame({
+            "Ticker": [MARKET_UNIVERSE[x] for x in prices.columns],
+            "First observation": [prices[x].first_valid_index() for x in prices.columns],
+            "Last observation": [prices[x].last_valid_index() for x in prices.columns],
+            "Valid prices": [int(prices[x].notna().sum()) for x in prices.columns],
+            "Missing %": [float(prices[x].isna().mean()*100) for x in prices.columns]
+        },index=prices.columns)
+        st.dataframe(coverage.style.format({"Missing %":"{:.1f}%"}),use_container_width=True)
+        st.download_button("Download selected prices CSV",prices.to_csv().encode("utf-8"),"india_quant_selected_prices.csv","text/csv")
+        st.download_button("Download selected returns CSV",valid_returns.to_csv().encode("utf-8"),"india_quant_selected_returns.csv","text/csv")
+        st.caption("Provider: Yahoo Finance via yfinance. Missing values and differing market calendars are retained; no synthetic observations are inserted.")
+    st.caption("Ticker availability, history length, currency and trading calendars differ. Cross-asset comparisons are descriptive; commodity futures, FX and Indian equities are not interchangeable assets.")
+
 def market_dashboard():
     st.markdown('<div class="section-kicker">02 / India market intelligence</div>', unsafe_allow_html=True)
     st.subheader("NSE · Reliance market-linkage terminal")
@@ -417,11 +510,12 @@ def market_dashboard():
         start = st.date_input("Start date", value=pd.Timestamp("2020-01-01").date(),
                               min_value=pd.Timestamp("2010-01-01").date())
         end = st.date_input("End date (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1))
+        market_assets = st.multiselect("Market series", list(MARKET_UNIVERSE), default=["RELIANCE","NIFTY50","BANKNIFTY","NIFTYENERGY"])
         window = st.select_slider("Rolling correlation window", options=[20, 40, 60, 90, 120], value=60)
         refresh = st.button("Refresh market data")
     if refresh:
         download_market.clear()
-    prices = download_market(str(start), str(end))
+    prices = download_market(str(start), str(end), market_assets)
     if prices.empty or "RELIANCE" not in prices or "NIFTY50" not in prices:
         st.warning("Market data could not be downloaded for the selected period. Check connectivity/ticker availability. The NSE module can also read a local prices CSV.")
         return
@@ -510,7 +604,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.sidebar.markdown("## INDIA QUANT DESK")
 st.sidebar.caption("Research terminal · educational build")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "NSE × Reliance", "Portfolio & Risk Lab", "Multi-Asset Data Explorer"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
@@ -518,7 +612,9 @@ if page == "Trading & HFT":
     pairs_dashboard()
 elif page == "NSE × Reliance":
     market_dashboard()
-else:
+elif page == "Portfolio & Risk Lab":
     risk_dashboard()
+else:
+    data_explorer_dashboard()
 st.markdown("---")
 st.markdown('<div class="small-note">RESEARCH ONLY · Not investment advice · Not a live trading system · Validate with licensed exchange data before drawing market conclusions.</div>', unsafe_allow_html=True)
