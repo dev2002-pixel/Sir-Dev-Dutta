@@ -50,6 +50,10 @@ The strategy panel is a reproducible synthetic pairs-trading demonstration. It i
 - Daily return scatter and OLS fit
 - Reliance lead-lag sensitivity
 - Date range and rolling-window controls
+- Auto-refreshing intraday market pulse (1m / 5m / 15m / 60m bars), latest-bar price cards and indexed intraday chart
+- Configurable refresh cadence and manual pull-latest control
+
+The market workspace uses Yahoo Finance symbols as research proxies. The intraday panel periodically refreshes recent bars while the app is open; choose 1m, 5m, 15m or 60m intervals and a 30–300 second refresh cadence. The refresh is provider polling, not a guaranteed real-time exchange stream. Yahoo Finance may delay, omit or rate-limit intraday data, and availability differs by symbol. Streamlit must remain running (locally or on a deployed host) for the dashboard to refresh; GitHub itself does not run the app.
 
 The market workspace uses Yahoo Finance symbols as research proxies:
 - Reliance Industries: `RELIANCE.NS`
