@@ -72,6 +72,8 @@ The market workspace uses Yahoo Finance symbols as research proxies:
 
 Risk estimates are historical, sample-dependent and not forecasts. Parametric VaR assumes normally distributed returns; the simple shock model is linear and does not reprice options, liquidity or market impact. The portfolio lab uses Yahoo Finance adjusted-price proxies, not licensed exchange data.
 
+
+- **INR contribution calculator:** enter current portfolio value and proposed fresh capital, then allocate the new money using existing stock weights, equal weights, or a custom split. It calculates rupee exposure, approximate added units, post-investment constituent weights, percentage-point weight changes, and historical portfolio volatility / 95% VaR / annualised-return comparisons. Excludes index, FX and commodity proxies from stock purchase allocation; excludes execution costs and fractional-share/lot-size constraints.
 ### 4. Multi-Asset Data Explorer
 Selectable daily price history for a 23-instrument research universe:
 - **Indian equities:** Reliance, TCS, Infosys, HDFC Bank, ICICI Bank, SBI, Axis Bank, Kotak Bank, L&T, ITC, Hindustan Unilever, Bharti Airtel, Tata Motors, Maruti and Sun Pharma.
