@@ -96,7 +96,7 @@ Interactive views include latest available price/session move cards, rebased per
 
 #### NSE index futures daily bhavcopy workflow
 
-Use the NSE website's **All Reports → F&O → UDiFF Common Bhavcopy Final (ZIP)** report. Upload the ZIP directly in the dashboard's **Futures & Options → NSE index futures · daily** tab, or upload the extracted CSV. The importer maps UDiFF fields and common legacy headers, filters index-futures instrument type `FUTIDX`, and retains NIFTY, BANKNIFTY and FINNIFTY. It also provides a normalized CSV schema template for vendor files.
+Use the NSE website's **All Reports → F&O → UDiFF Common Bhavcopy Final (ZIP)** report. Upload the ZIP directly in the dashboard's **Futures & Options → NSE index futures · daily** tab, or upload the extracted CSV. The importer maps UDiFF fields and common legacy headers, filters index-futures instrument type `FUTIDX`, and retains NIFTY, BANKNIFTY and FINNIFTY. It also provides a normalized CSV schema template for vendor files. A repository copy is available at [`data/nse_index_futures_template.csv`](./data/nse_index_futures_template.csv).
 
 | Normalized field | UDiFF header commonly mapped | Meaning |
 |---|---|---|
@@ -167,7 +167,7 @@ Outputs include daily log returns, a correlation matrix, HAC-robust market regre
 - `generate_sample_data.py` — deterministic synthetic sample generator
 - `nse_reliance_analysis.py` — NSE/Reliance market-linkage research
 - `NSE_RELIANCE_RESEARCH.md` — research design and interpretation guide
-- `data/` — historical index-weight and corporate-event templates
+- `data/` — historical index-weight, corporate-event and NSE index-futures CSV templates
 - `src/india_quant/` — data validation, econometrics, backtest, metrics and execution modules
 - `tests/` — unit tests
 - `requirements.txt` — dependencies
