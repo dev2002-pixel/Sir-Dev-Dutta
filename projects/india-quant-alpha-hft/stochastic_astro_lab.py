@@ -115,8 +115,7 @@ def stochastic_astro_dashboard():
         st.dataframe(pd.DataFrame({"Statistic":["5th percentile","Median","Mean","95th percentile"],
                                    "Simulated":[*np.quantile(terminal,[.05,.5,.5,.95])[:2],
                                                 terminal.mean(),np.quantile(terminal,.95)],
-                                   "Analytical":[s0*np.exp((mu-.5*sigma**2)*years+sigma*np.sqrt(years)*x)
-                                                 for x in [-1.644854,0,0,1.644854]]}),
+                                   "Analytical":[s0*np.exp((mu-.5*sigma**2)*years+sigma*np.sqrt(years)*-1.644854), theoretical_median, theoretical_mean, s0*np.exp((mu-.5*sigma**2)*years+sigma*np.sqrt(years)*1.644854)]}),
                      hide_index=True, use_container_width=True)
         st.caption("GBM assumes constant drift and volatility, continuous paths and log-normal prices. It omits jumps, stochastic volatility, seasonality, convenience yield, storage costs and market microstructure. The displayed drift is a user assumption, not an estimated forecast.")
 
