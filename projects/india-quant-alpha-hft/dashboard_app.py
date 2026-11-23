@@ -541,9 +541,9 @@ def data_explorer_dashboard(region="INR"):
             chosen=st.multiselect(f"{region} instruments",explorer_universe,
                 default=(["SP500","NASDAQ","AAPL","MSFT","NVDA","VIX","DXY"] if is_us else ["RELIANCE","TCS","HDFC_BANK","NIFTY50","BANKNIFTY","INDIA_VIX","USDINR","BRENT_CRUDE"]),key=f"explorer_assets_{region}")
         with c2:
-            start=st.date_input("From",value=pd.Timestamp("2021-01-01").date(),key="explorer_start")
+            start=st.date_input("From",value=pd.Timestamp("2021-01-01").date(),key=f"explorer_start_{region}")
         with c3:
-            end=st.date_input("To (exclusive)",value=pd.Timestamp.today().date()+pd.Timedelta(days=1),key="explorer_end")
+            end=st.date_input("To (exclusive)",value=pd.Timestamp.today().date()+pd.Timedelta(days=1),key=f"explorer_end_{region}")
         refresh=st.button("↻ Refresh Yahoo Finance data",type="primary",use_container_width=True)
     if start >= end:
         st.error("The start date must be earlier than the end date.")
@@ -950,7 +950,7 @@ def market_dashboard():
         start = st.date_input("Start date", value=pd.Timestamp("2020-01-01").date(),
                               min_value=pd.Timestamp("2010-01-01").date())
         end = st.date_input("End date (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1))
-        market_assets = st.multiselect("Market series", list(MARKET_UNIVERSE), default=["RELIANCE","NIFTY50","BANKNIFTY","NIFTYENERGY"])
+        market_assets = st.multiselect("India market series", ["RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA","NIFTY50","BANKNIFTY","NIFTYENERGY","INDIA_VIX","USDINR","BRENT_CRUDE","WTI_CRUDE","GOLD"], default=["RELIANCE","NIFTY50","BANKNIFTY","NIFTYENERGY"])
         window = st.select_slider("Rolling correlation window", options=[20, 40, 60, 90, 120], value=60)
         refresh = st.button("Refresh market data")
     if refresh:
@@ -1234,8 +1234,7 @@ def fo_dashboard():
         fo_underlyings = {
             "Reliance": "RELIANCE.NS", "TCS": "TCS.NS", "Infosys": "INFY.NS",
             "HDFC Bank": "HDFCBANK.NS", "ICICI Bank": "ICICIBANK.NS",
-            "NIFTY 50": "^NSEI", "Bank NIFTY": "^NSEBANK",
-            "Apple (US example)": "AAPL", "SPY (US example)": "SPY"
+            "NIFTY 50": "^NSEI", "Bank NIFTY": "^NSEBANK"
         }
         left, right = st.columns([1, 1])
         with left:
