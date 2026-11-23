@@ -311,8 +311,8 @@ def risk_dashboard(region="INR"):
     with st.sidebar:
         st.markdown("### Risk lab data controls")
         risk_start = st.date_input("Risk sample start", value=pd.Timestamp("2020-01-01").date(),
-                                   min_value=pd.Timestamp("2010-01-01").date(), key="risk_start")
-        risk_end = st.date_input("Risk sample end (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1), key="risk_end")
+                                   min_value=pd.Timestamp("2010-01-01").date(), key=f"risk_start_{region}")
+        risk_end = st.date_input("Risk sample end (exclusive)", value=pd.Timestamp.today().date() + pd.Timedelta(days=1), key=f"risk_end_{region}")
         risk_defaults = ["SP500","NASDAQ","AAPL","MSFT","NVDA"] if is_us else ["RELIANCE","NIFTY50","BANKNIFTY","TCS","HDFC_BANK"]
         risk_assets = st.multiselect(f"Download {region} assets", region_assets, default=risk_defaults, key=f"risk_assets_{region}")
         risk_refresh = st.button("Refresh risk data")
@@ -339,7 +339,7 @@ def risk_dashboard(region="INR"):
     weight_cols = st.columns(min(4, len(selected)))
     for i, asset in enumerate(selected):
         with weight_cols[i % len(weight_cols)]:
-            raw_weights[asset] = st.slider(f"{asset} weight", 0, 100, int(100/len(selected)), 5, key=f"weight_{asset}")
+            raw_weights[asset] = st.slider(f"{asset} weight", 0, 100, int(100/len(selected)), 5, key=f"weight_{region}_{asset}")
     weight_sum = sum(raw_weights.values())
     if weight_sum == 0:
         st.error("At least one portfolio weight must be greater than zero.")
@@ -348,23 +348,22 @@ def risk_dashboard(region="INR"):
     st.caption("Normalised weights: " + " · ".join(f"{k} {v:.0%}" for k,v in weights.items()))
 
     # INR contribution calculator: existing portfolio value + proposed new money.
-    st.markdown("#### INR portfolio contribution calculator")
-    st.caption("Model how a fresh investment changes rupee exposure and constituent weights. Existing weights above are treated as your current portfolio mix.")
-    equity_assets = [a for a in selected if a in {
-        "RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK",
-        "KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS",
-        "MARUTI","SUN_PHARMA"
-    }]
+    currency = "USD" if is_us else "INR"
+    symbol = "$" if is_us else "₹"
+    st.markdown(f"#### {currency} portfolio contribution calculator")
+    st.caption(f"Model how fresh capital changes {currency} exposure and constituent weights. Only same-currency equities are eligible for the contribution calculator.")
+    equity_set = ({"AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ"} if is_us else {"RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA"})
+    equity_assets = [a for a in selected if a in equity_set]
     if equity_assets:
         calc_left, calc_right = st.columns(2)
         with calc_left:
             existing_capital = st.number_input(
-                "Current portfolio value (INR)", min_value=0.0, value=1000000.0,
+                f"Current portfolio value ({currency})", min_value=0.0, value=1000000.0,
                 step=50000.0, format="%.2f", key="contrib_existing_capital"
             )
         with calc_right:
             new_money = st.number_input(
-                "New money to invest (INR)", min_value=0.0, value=100000.0,
+                f"New money to invest ({currency})", min_value=0.0, value=100000.0,
                 step=10000.0, format="%.2f", key="contrib_new_money"
             )
         allocation_method = st.selectbox(
@@ -409,9 +408,9 @@ def risk_dashboard(region="INR"):
             latest_prices = usable.iloc[-1].reindex(selected)
             calc_table = pd.DataFrame({
                 "Current weight (%)": weights * 100,
-                "New money (INR)": contribution,
+                f"New money ({currency})": contribution,
                 "New money allocation (%)": (contribution / new_money * 100) if new_money > 0 else 0.0,
-                "Post-investment value (INR)": post_values,
+                f"Post-investment value ({currency})": post_values,
                 "Post-investment weight (%)": post_weights * 100,
                 "Weight change (pp)": (post_weights - weights) * 100,
                 "Latest price (provider units)": latest_prices,
@@ -419,14 +418,14 @@ def risk_dashboard(region="INR"):
             })
             st.markdown("**Post-investment allocation impact**")
             st.dataframe(calc_table.style.format({
-                "Current weight (%)":"{:.2f}", "New money (INR)":"₹{:,.2f}",
-                "New money allocation (%)":"{:.2f}", "Post-investment value (INR)":"₹{:,.2f}",
+                "Current weight (%)":"{:.2f}", f"New money ({currency})":symbol+"{:,.2f}",
+                "New money allocation (%)":"{:.2f}", f"Post-investment value ({currency})":symbol+"{:,.2f}",
                 "Post-investment weight (%)":"{:.2f}", "Weight change (pp)":"{:+.2f}",
                 "Latest price (provider units)":"{:,.2f}", "Indicative added units":"{:,.2f}"
             }, na_rep="—"), use_container_width=True)
             st.markdown("**Estimated portfolio-level effect**")
             metric_row([
-                ("TOTAL CAPITAL AFTER INVESTMENT", f"₹{existing_capital + new_money:,.2f}", f"New contribution ₹{new_money:,.2f}"),
+                ("TOTAL CAPITAL AFTER INVESTMENT", f"{symbol}{existing_capital + new_money:,.2f}", f"New contribution {symbol}{new_money:,.2f}"),
                 ("ANNUALISED VOLATILITY", f"{post_vol:.2%}", f"{post_vol-old_vol:+.2%} vs current mix"),
                 ("HISTORICAL 95% VaR", f"{post_var:.2%}", f"{post_var-old_var:+.2%} vs current mix"),
                 ("HISTORICAL ANNUALISED RETURN", f"{post_ann_return:.2%}", f"{post_ann_return-old_ann_return:+.2%} vs current mix"),
@@ -438,13 +437,13 @@ def risk_dashboard(region="INR"):
                                     yaxis_title="Portfolio weight (%)", barmode="group")
             st.plotly_chart(polish(fig_alloc, 340), use_container_width=True)
             st.download_button(
-                "Download INR contribution analysis (CSV)",
+                f"Download {currency} contribution analysis (CSV)",
                 calc_table.round(2).to_csv(index=True).encode("utf-8"),
-                file_name="india_quant_inr_contribution_analysis.csv", mime="text/csv"
+                file_name=f"{region.lower()}_contribution_analysis.csv", mime="text/csv"
             )
-            st.caption("Indicative units = rupee allocation ÷ latest downloaded price. This is a sizing estimate, not an order: it excludes lot sizes, fractional-share restrictions, brokerage, taxes, slippage, liquidity, cash drag and price movement. Historical volatility, VaR and return differences are sample estimates, not forecasts. Index/FX/commodity proxies in the wider risk portfolio are not included as investable stocks in this calculator.")
+            st.caption(f"Indicative units = {currency} allocation ÷ latest downloaded price. This is a sizing estimate, not an order; it excludes lot sizes, brokerage, taxes, slippage, liquidity and price movement. Historical risk/return estimates are not forecasts.")
     else:
-        st.info("Select at least one individual equity (for example RELIANCE, TCS, INFOSYS or HDFC_BANK) to use the INR contribution calculator.")
+        st.info("Select at least one individual equity from the selected market to use its currency-specific contribution calculator.")
     port_ret = returns[weights.index].mul(weights, axis=1).sum(axis=1)
     equity = np.exp(port_ret.cumsum())
     drawdown = equity / equity.cummax() - 1
@@ -513,7 +512,7 @@ def risk_dashboard(region="INR"):
         shocks={}
         for i,asset in enumerate(selected):
             with shock_cols[i % len(shock_cols)]:
-                shocks[asset]=st.slider(f"{asset} shock (%)",-30,10, -10 if asset=="NIFTY50" else -12,1,key=f"shock_{asset}")
+                shocks[asset]=st.slider(f"{asset} shock (%)",-30,10, -10 if asset=="NIFTY50" else -12,1,key=f"shock_{region}_{asset}")
         scenario_return=sum(weights[a]*shocks[a]/100 for a in selected)
         capital=st.number_input("Illustrative portfolio capital",min_value=1000.0,value=1000000.0,step=50000.0)
         loss=capital*scenario_return
