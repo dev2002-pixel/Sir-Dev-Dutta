@@ -573,7 +573,7 @@ def data_explorer_dashboard(region="INR"):
     for i,name in enumerate(available):
         with metric_cols[i%len(metric_cols)]:
             change=(latest[name]/prev[name]-1)*100 if pd.notna(prev[name]) and prev[name]!=0 else np.nan
-            metric_cols[i%len(metric_cols)].metric(name,f"{latest[name]:,.2f}" if pd.notna(latest[name]) else "—",
+            metric_cols[i%len(metric_cols)].metric(name,f"{currency_symbol}{latest[name]:,.2f}" if pd.notna(latest[name]) else "—",
                 f"{change:+.2f}% · last observation" if np.isfinite(change) else "—")
     last_stamp=prices.dropna(how="all").index[-1]
     st.caption(f"Last common dataset timestamp: {last_stamp:%Y-%m-%d} · Retrieved from Yahoo Finance on app request. Prices are not guaranteed live.")
