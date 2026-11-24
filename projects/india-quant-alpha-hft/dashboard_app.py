@@ -1648,7 +1648,7 @@ st.markdown("""
 def tradingview_visual_terminal():
     st.markdown('<div class="section-kicker">09 / external charting layer</div>', unsafe_allow_html=True)
     st.subheader('TradingView · Interactive market visual terminal')
-    st.caption('TradingView-hosted interactive charts and heatmaps. Feed delays, symbol coverage and real-time entitlements are controlled by TradingView and the relevant exchange.')
+    st.caption('Choose a preset or enter any TradingView-supported ticker. The chart and quote panel reload for the applied symbol.')
     market = st.selectbox('Market universe', ['India · INR', 'United States · USD', 'Global futures & FX'], key='tv_market')
     presets = {
         'India · INR': {'NIFTY 50':'NSE:NIFTY','NIFTY Bank':'NSE:BANKNIFTY','Reliance':'NSE:RELIANCE','HDFC Bank':'NSE:HDFCBANK','TCS':'NSE:TCS','Infosys':'NSE:INFY','SBI':'NSE:SBIN'},
@@ -1656,28 +1656,46 @@ def tradingview_visual_terminal():
         'Global futures & FX': {'Gold':'COMEX:GC1!','Silver':'COMEX:SI1!','WTI crude':'NYMEX:CL1!','Brent crude':'NYMEX:BR1!','E-mini S&P':'CME_MINI:ES1!','Nasdaq futures':'CME_MINI:NQ1!','Dollar index':'TVC:DXY','USD/INR':'FX_IDC:USDINR','EUR/USD':'FX:EURUSD'}
     }
     a,b,c = st.columns([1.5,1,1])
-    with a: label = st.selectbox('Instrument', list(presets[market]), key='tv_symbol')
+    with a: label = st.selectbox('Preset instrument', list(presets[market]), key='tv_symbol_' + market)
     with b: interval = st.selectbox('Timeframe', ['1','5','15','30','60','240','D','W','M'], index=6, key='tv_timeframe')
     with c: style = st.selectbox('Chart style', ['Candles','Line','Bars'], key='tv_chart_style')
-    symbol = presets[market][label]
-    st.markdown('**' + label + '** · `' + symbol + '` · ' + market)
-    chart, heat, tape = st.tabs(['Advanced chart','Market heatmap','Ticker tape'])
+    preset_symbol = presets[market][label]
+    with st.form('tv_custom_symbol_form'):
+        x,y = st.columns([3,1])
+        with x: typed_symbol = st.text_input('Enter a specific stock / ticker', placeholder='Examples: NASDAQ:NVDA · NSE:RELIANCE · NYSE:IBM · NASDAQ:MSFT', value=st.session_state.get('tv_symbol_input', ''))
+        with y: apply_symbol = st.form_submit_button('Apply ticker', type='primary', use_container_width=True)
+    if apply_symbol:
+        cleaned = typed_symbol.strip().upper()
+        if cleaned:
+            st.session_state['tv_applied_symbol'] = cleaned
+            st.session_state['tv_symbol_input'] = cleaned
+        else:
+            st.warning('Enter a TradingView symbol, for example NASDAQ:NVDA.')
+    symbol = st.session_state.get('tv_applied_symbol', preset_symbol)
+    if not st.session_state.get('tv_applied_symbol'): symbol = preset_symbol
+    st.markdown('**Active chart:** `' + symbol + '`  ·  ' + market + '  ·  ' + interval)
+    chart, quote, heat, tape = st.tabs(['Interactive chart','Price & daily change','Market heatmap','Ticker tape'])
     with chart:
         config = {'autosize':True,'symbol':symbol,'interval':interval,'timezone':'Etc/UTC','theme':'dark','style':{'Candles':'1','Line':'2','Bars':'0'}[style],'locale':'en','enable_publishing':False,'allow_symbol_change':True,'hide_side_toolbar':False,'withdateranges':True,'details':True,'hotlist':True,'studies':['STD;SMA','STD;EMA','STD;RSI'],'container_id':'tv_advanced_chart'}
         html = '<div id="tv_advanced_chart" style="height:700px;width:100%"></div><script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget(' + json.dumps(config) + ');</script>'
         components.html(html, height=720, scrolling=False)
-        st.caption('Use TradingView drawing tools, indicators, symbol search, crosshair, comparison and multi-timeframe controls inside the chart.')
+        st.caption('See price changes on the right price scale and crosshair; use the chart toolbar to add indicators, draw trendlines, compare symbols and change timeframe. Select a candle to inspect its OHLC values.')
+    with quote:
+        quote_config = {'symbol':symbol,'colorTheme':'dark','isTransparent':True,'locale':'en','width':'100%'}
+        html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-symbol-info.js" async>' + json.dumps(quote_config) + '</script>'
+        components.html(html, height=180, scrolling=False)
+        st.caption('The quote card displays the selected instrument’s latest available price and daily change / percentage change where supplied by TradingView. Quotes may be delayed.')
     with heat:
         heat_source = {'India · INR':'NSE','United States · USD':'SPX500','Global futures & FX':'SPX500'}[market]
         heat_config = {'dataSource':heat_source,'blockSize':'market_cap_basic','blockColor':'change','grouping':'sector','locale':'en','symbolUrl':'','colorTheme':'dark','exchanges':[],'hasTopBar':True,'isDataSetEnabled':True,'isZoomEnabled':True,'hasSymbolTooltip':True,'isMonoSize':False,'width':'100%','height':'660'}
         html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>' + json.dumps(heat_config) + '</script>'
         components.html(html, height=675, scrolling=False)
-        st.caption('Heatmap uses TradingView’s market-cap and price-change visualization for the selected market universe; symbol coverage depends on the provider.')
+        st.caption('Market-cap and price-change heatmap. Coverage depends on TradingView and exchange availability.')
     with tape:
         tape_config = {'symbols':[{'proName':v,'title':k} for k,v in list(presets[market].items())[:8]],'colorTheme':'dark','locale':'en','isTransparent':True,'showSymbolLogo':True,'displayMode':'adaptive'}
         html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>' + json.dumps(tape_config) + '</script>'
         components.html(html, height=115, scrolling=False)
-    st.info('TradingView widgets run in the browser and require internet access. Real-time quotes depend on exchange entitlements. They do not feed data into the dashboard’s Python calculations or transmit your uploaded CSV files.')
+    st.info('To view another company, enter its TradingView ticker above and press Apply ticker. Examples: NASDAQ:NVDA, NYSE:IBM, NSE:RELIANCE. TradingView widgets run in your browser; real-time access depends on exchange entitlements. They do not feed the Python backtests or transmit your uploaded CSV files.')
 
 st.sidebar.markdown("## GLOBAL QUANT DESK")
 st.sidebar.caption("India · INR  /  United States · USD")
