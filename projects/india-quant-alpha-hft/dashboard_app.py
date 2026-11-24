@@ -534,6 +534,7 @@ def risk_dashboard(region="INR"):
 def data_explorer_dashboard(region="INR"):
     is_us = region == "USD"
     currency_symbol = "$" if is_us else "₹"
+    currency_code = "USD" if is_us else "INR"
     explorer_universe = (["SP500","NASDAQ","DOW","RUSSELL2000","VIX","AAPL","MSFT","NVDA","AMZN","GOOGL","META","JPM","TSLA","SPY","QQQ","DXY","EURUSD","USDJPY"] if is_us else ["RELIANCE","TCS","INFOSYS","HDFC_BANK","ICICI_BANK","SBIN","AXIS_BANK","KOTAK_BANK","LT","ITC","HINDUNILVR","BHARTI_AIRTEL","TATA_MOTORS","MARUTI","SUN_PHARMA","NIFTY50","BANKNIFTY","NIFTYENERGY","INDIA_VIX","USDINR","BRENT_CRUDE","WTI_CRUDE","GOLD"])
     st.markdown('<div class="section-kicker">04 / cross-asset data terminal</div>', unsafe_allow_html=True)
     st.subheader(f"{region} market data & analytics")
@@ -583,15 +584,15 @@ def data_explorer_dashboard(region="INR"):
     with tab_price:
         left,right=st.columns([1.2,1])
         with left:
-            chart_asset=st.selectbox("Instrument detail",available,key="detail_asset")
+            chart_asset=st.selectbox("Instrument detail",available,key=f"detail_asset_{region}")
         with right:
-            chart_style=st.selectbox("Chart type",["Candlestick","Line"],key="detail_chart")
+            chart_style=st.selectbox("Chart type",["Candlestick","Line"],key=f"detail_chart_{region}")
         detail=download_ohlcv(chart_asset,str(start),str(end))
         if detail.empty:
             st.info("OHLC data is unavailable for this instrument. Showing adjusted close instead.")
             detail=pd.DataFrame({"Close":prices[chart_asset]})
-        ma_fast=st.slider("Fast moving average",5,100,20,5,key="ma_fast")
-        ma_slow=st.slider("Slow moving average",20,250,50,5,key="ma_slow")
+        ma_fast=st.slider("Fast moving average",5,100,20,5,key=f"ma_fast_{region}")
+        ma_slow=st.slider("Slow moving average",20,250,50,5,key=f"ma_slow_{region}")
         fig=go.Figure()
         if chart_style=="Candlestick" and {"Open","High","Low","Close"}.issubset(detail.columns):
             fig.add_trace(go.Candlestick(x=detail.index,open=detail["Open"],high=detail["High"],
