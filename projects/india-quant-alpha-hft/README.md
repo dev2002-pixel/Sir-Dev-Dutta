@@ -35,6 +35,15 @@ streamlit run dashboard_app.py
 The dashboard has twelve workspaces with India/INR and US/USD research separated at the navigation level:
 
 
+### TradingView visual terminal
+
+A dedicated **TradingView Visual Terminal** workspace embeds TradingView's interactive Advanced Chart, stock heatmap and ticker-tape widgets. The market selector separates:
+- **India · INR:** NIFTY 50, Bank NIFTY, Reliance, HDFC Bank, TCS, Infosys and SBI.
+- **United States · USD:** S&P 500, Nasdaq 100, Dow Jones, Apple, Microsoft, NVIDIA, Amazon, Tesla, SPY and QQQ.
+- **Global futures & FX:** gold, silver, WTI, Brent, E-mini S&P, Nasdaq futures, DXY, USD/INR and EUR/USD.
+
+The Advanced Chart provides browser-side symbol search, chart styles, timeframes, drawing tools and technical studies. The stock heatmap and ticker tape are separate embedded widgets. These widgets are hosted by TradingView and are not the source of the dashboard's Python/Yahoo calculations. Real-time availability and delays depend on TradingView's exchange agreements and user entitlements; widgets require internet access and may be blocked by browser privacy/network settings. No uploaded CSVs or Yahoo Finance data are sent to TradingView.
+
 ### Region-separated workspaces · INR vs USD
 
 The dashboard has separate workspaces and widget state for each market. It does not combine INR and USD prices, portfolio capital or returns, and does not apply implicit FX conversion.
