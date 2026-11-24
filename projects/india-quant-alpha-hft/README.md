@@ -35,6 +35,17 @@ streamlit run dashboard_app.py
 The dashboard has twelve workspaces with India/INR and US/USD research separated at the navigation level:
 
 
+### TradingView-connected stochastic calculus & GBM research
+
+The **Stochastic Calculus & Astro Lab** now includes:
+- Embedded TradingView advanced charts for selected India, US and commodity instruments, with adjustable timeframes, drawing tools and SMA/EMA/RSI studies.
+- Dedicated TradingView Brent and gold continuous-futures charts in the astro event-study workspace.
+- Historical GBM calibration from a user-selectable Yahoo Finance ticker and date range. The dashboard estimates annualized volatility and arithmetic drift from daily log returns, charts adjusted closes and 63-session rolling volatility, and reports skewness, excess kurtosis and lag-1 return autocorrelation.
+- An Itô log-price consistency check and a control to carry fitted parameters into the GBM Monte Carlo simulator.
+- Downloadable calibration observations for reproducibility.
+
+**Data-source boundary:** TradingView is embedded for chart visualization; its widget does not provide chart data to the Python process. Numerical calibration and the existing crude/gold event study use independently downloaded Yahoo Finance historical price proxies. Use the explicit Yahoo ticker field for Python calculations and the TradingView symbol override for the embedded chart. Real-time chart availability depends on TradingView and exchange entitlements. The GBM fit is a historical constant-parameter estimate, not a forecast; regime changes, jumps, fat tails and serial dependence can invalidate GBM assumptions. Astro event studies are exploratory and do not establish causality or predictive power.
+
 ### TradingView visual terminal
 
 A dedicated **TradingView Visual Terminal** workspace embeds TradingView's interactive Advanced Chart, stock heatmap and ticker-tape widgets. The market selector separates:
