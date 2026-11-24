@@ -180,7 +180,6 @@ def stochastic_astro_dashboard():
         st.divider()
         st.subheader("GBM simulation · calibrated or user-defined parameters")
         st.latex(r"dS_t = \mu S_t\,dt + \sigma S_t\,dW_t")
-        st.latex(r"dS_t = \mu S_t\,dt + \sigma S_t\,dW_t")
         st.write("The exact time-step solution is S(t+Δt) = S(t) exp[(μ − σ²/2)Δt + σ√Δt Z], where Z is standard normal.")
         a, b, c = st.columns(3)
         with a:
