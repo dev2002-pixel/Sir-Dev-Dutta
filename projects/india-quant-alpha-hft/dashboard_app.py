@@ -19,6 +19,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
+import streamlit.components.v1 as components
+import json
 from streamlit_autorefresh import st_autorefresh
 import yfinance as yf
 from stochastic_astro_lab import stochastic_astro_dashboard
@@ -1641,14 +1643,49 @@ st.markdown("""
   <p>India markets · INR | US markets · USD | Systematic strategies · execution research · derivatives & risk</p>
 </div>
 """, unsafe_allow_html=True)
+
+def tradingview_visual_terminal():
+    st.markdown('<div class="section-kicker">09 / external charting layer</div>', unsafe_allow_html=True)
+    st.subheader('TradingView · Interactive market visual terminal')
+    st.caption('TradingView-hosted interactive charts and heatmaps. Feed delays, symbol coverage and real-time entitlements are controlled by TradingView and the relevant exchange.')
+    market = st.selectbox('Market universe', ['India · INR', 'United States · USD', 'Global futures & FX'], key='tv_market')
+    presets = {
+        'India · INR': {'NIFTY 50':'NSE:NIFTY','NIFTY Bank':'NSE:BANKNIFTY','Reliance':'NSE:RELIANCE','HDFC Bank':'NSE:HDFCBANK','TCS':'NSE:TCS','Infosys':'NSE:INFY','SBI':'NSE:SBIN'},
+        'United States · USD': {'S&P 500':'SP:SPX','Nasdaq 100':'NASDAQ:NDX','Dow Jones':'DJ:DJI','Apple':'NASDAQ:AAPL','Microsoft':'NASDAQ:MSFT','NVIDIA':'NASDAQ:NVDA','Amazon':'NASDAQ:AMZN','Tesla':'NASDAQ:TSLA','SPY':'AMEX:SPY','QQQ':'NASDAQ:QQQ'},
+        'Global futures & FX': {'Gold':'COMEX:GC1!','Silver':'COMEX:SI1!','WTI crude':'NYMEX:CL1!','Brent crude':'NYMEX:BR1!','E-mini S&P':'CME_MINI:ES1!','Nasdaq futures':'CME_MINI:NQ1!','Dollar index':'TVC:DXY','USD/INR':'FX_IDC:USDINR','EUR/USD':'FX:EURUSD'}
+    }
+    a,b,c = st.columns([1.5,1,1])
+    with a: label = st.selectbox('Instrument', list(presets[market]), key='tv_symbol')
+    with b: interval = st.selectbox('Timeframe', ['1','5','15','30','60','240','D','W','M'], index=6, key='tv_timeframe')
+    with c: style = st.selectbox('Chart style', ['Candles','Line','Bars'], key='tv_chart_style')
+    symbol = presets[market][label]
+    st.markdown('**' + label + '** · `' + symbol + '` · ' + market)
+    chart, heat, tape = st.tabs(['Advanced chart','Market heatmap','Ticker tape'])
+    with chart:
+        config = {'autosize':True,'symbol':symbol,'interval':interval,'timezone':'Etc/UTC','theme':'dark','style':{'Candles':'1','Line':'2','Bars':'0'}[style],'locale':'en','enable_publishing':False,'allow_symbol_change':True,'hide_side_toolbar':False,'withdateranges':True,'details':True,'hotlist':True,'studies':['STD;SMA','STD;EMA','STD;RSI'],'container_id':'tv_advanced_chart'}
+        html = '<div id="tv_advanced_chart" style="height:700px;width:100%"></div><script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget(' + json.dumps(config) + ');</script>'
+        components.html(html, height=720, scrolling=False)
+        st.caption('Use TradingView drawing tools, indicators, symbol search, crosshair, comparison and multi-timeframe controls inside the chart.')
+    with heat:
+        html = '<iframe src="https://www.tradingview.com/widgetembed/?colorTheme=dark&locale=en&width=100%25&height=650&isTransparent=true" style="width:100%;height:660px;border:0;border-radius:12px"></iframe>'
+        components.html(html, height=675, scrolling=False)
+        st.caption('Heatmap content is supplied by TradingView widget defaults and is a visual overview, not a downloadable feed.')
+    with tape:
+        tape_config = {'symbols':[{'proName':v,'title':k} for k,v in list(presets[market].items())[:8]],'colorTheme':'dark','locale':'en','isTransparent':True,'showSymbolLogo':True,'displayMode':'adaptive'}
+        html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>' + json.dumps(tape_config) + '</script>'
+        components.html(html, height=115, scrolling=False)
+    st.info('TradingView widgets run in the browser and require internet access. Real-time quotes depend on exchange entitlements. They do not feed data into the dashboard’s Python calculations or transmit your uploaded CSV files.')
+
 st.sidebar.markdown("## GLOBAL QUANT DESK")
 st.sidebar.caption("India · INR  /  United States · USD")
-page = st.sidebar.radio("Workspace", ["Trading & HFT", "India Markets · INR", "US Markets · USD", "India Equities · INR", "US Equities · USD", "India Portfolio & Risk · INR", "US Portfolio & Risk · USD", "India Multi-Asset · INR", "US Multi-Asset · USD", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
+page = st.sidebar.radio("Workspace", ["Trading & HFT", "TradingView Visual Terminal", "India Markets · INR", "US Markets · USD", "India Equities · INR", "US Equities · USD", "India Portfolio & Risk · INR", "US Portfolio & Risk · USD", "India Multi-Asset · INR", "US Multi-Asset · USD", "Futures & Options", "Data Pipelines", "Stochastic Calculus & Astro Lab"])
 st.sidebar.markdown("---")
 st.sidebar.caption("DATA INTEGRITY")
 st.sidebar.caption("Synthetic strategy sample · Yahoo Finance market proxy · no live execution")
 if page == "Trading & HFT":
     pairs_dashboard()
+elif page == "TradingView Visual Terminal":
+    tradingview_visual_terminal()
 elif page == "India Markets · INR":
     market_dashboard()
 elif page == "US Markets · USD":
