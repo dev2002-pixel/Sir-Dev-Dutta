@@ -6,6 +6,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
+import streamlit.components.v1 as components
+import json
 import yfinance as yf
 
 
@@ -65,22 +67,118 @@ def _commodity_prices(start, end):
     return close.apply(pd.to_numeric, errors="coerce").dropna(how="all").sort_index()
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def _asset_history(ticker, start, end):
+    raw = yf.download(ticker, start=start, end=end, auto_adjust=True, progress=False, threads=True)
+    if raw is None or raw.empty:
+        return pd.DataFrame()
+    close = raw['Close'] if isinstance(raw.columns, pd.MultiIndex) else raw[['Close']]
+    if isinstance(close, pd.Series):
+        close = close.to_frame()
+    if isinstance(close.columns, pd.MultiIndex):
+        close.columns = close.columns.get_level_values(-1)
+    if ticker in close.columns:
+        close = close[[ticker]]
+    close = close.apply(pd.to_numeric, errors='coerce').dropna(how='all')
+    close.columns = ['Adjusted close']
+    return close.sort_index()
+
+def _tradingview_chart(symbol, interval='D', height=560):
+    cfg = {'autosize':True,'symbol':symbol,'interval':interval,'timezone':'Etc/UTC','theme':'dark','style':'1','locale':'en','enable_publishing':False,'allow_symbol_change':True,'hide_side_toolbar':False,'withdateranges':True,'details':True,'studies':['STD;SMA','STD;EMA','STD;RSI'],'container_id':'tv_stochastic_chart'}
+    html = '<div id="tv_stochastic_chart" style="height:' + str(height) + 'px;width:100%"></div><script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget(' + json.dumps(cfg) + ');</script>'
+    components.html(html, height=height+20, scrolling=False)
+
 def stochastic_astro_dashboard():
     st.markdown('<div class="section-kicker">07 / mathematical finance & alternative research</div>', unsafe_allow_html=True)
     st.title("Stochastic Calculus & Astro-Market Research")
     st.caption("GBM simulation · Itô calculus · commodity event studies · transparent assumptions")
-    math_tab, astro_tab, guide_tab = st.tabs(["GBM & Itô calculator", "Crude & gold · astro event study", "Concepts & assumptions"])
+    math_tab, astro_tab, guide_tab = st.tabs(["Market-calibrated GBM & Itô", "Crude & gold · astro event study", "Concepts & assumptions"])
 
     with math_tab:
-        st.subheader("Geometric Brownian Motion")
+        st.subheader("Market-calibrated GBM & Itô research")
+        st.caption("Select a market instrument, estimate GBM parameters from adjusted historical closes, inspect diagnostics and compare the Python calibration with a TradingView chart.")
+        presets = {
+            "India · INR": {"Reliance":"RELIANCE.NS","NIFTY 50":"^NSEI","Bank NIFTY":"^NSEBANK","HDFC Bank":"HDFCBANK.NS","TCS":"TCS.NS","Infosys":"INFY.NS"},
+            "US · USD": {"Apple":"AAPL","Microsoft":"MSFT","NVIDIA":"NVDA","S&P 500":"^GSPC","Nasdaq":"^IXIC","SPY":"SPY","Tesla":"TSLA"},
+            "Commodities": {"Gold":"GC=F","Brent crude":"BZ=F","WTI crude":"CL=F","Silver":"SI=F"}
+        }
+        m1,m2,m3 = st.columns([1,1.3,1])
+        with m1: region = st.selectbox("Asset universe", list(presets), key="stoch_region")
+        with m2: asset_label = st.selectbox("Instrument", list(presets[region]), key="stoch_asset_" + region)
+        with m3: interval_tv = st.selectbox("TradingView timeframe", ["5","15","60","240","D","W","M"], index=4, key="stoch_tv_interval")
+        yahoo_ticker = presets[region][asset_label]
+        default_tv = {"RELIANCE.NS":"NSE:RELIANCE","^NSEI":"NSE:NIFTY","^NSEBANK":"NSE:BANKNIFTY","HDFCBANK.NS":"NSE:HDFCBANK","TCS.NS":"NSE:TCS","INFY.NS":"NSE:INFY","AAPL":"NASDAQ:AAPL","MSFT":"NASDAQ:MSFT","NVDA":"NASDAQ:NVDA","^GSPC":"SP:SPX","^IXIC":"NASDAQ:IXIC","SPY":"AMEX:SPY","TSLA":"NASDAQ:TSLA","GC=F":"COMEX:GC1!","BZ=F":"NYMEX:BR1!","CL=F":"NYMEX:CL1!","SI=F":"COMEX:SI1!"}.get(yahoo_ticker, yahoo_ticker)
+        with st.form("stoch_custom_symbol_form"):
+            custom_tv = st.text_input("TradingView symbol override (optional)", placeholder="e.g. NASDAQ:AMD, NSE:SBIN, NYSE:IBM")
+            apply_tv = st.form_submit_button("Apply chart symbol")
+        if apply_tv and custom_tv.strip():
+            st.session_state["stoch_tv_override"] = custom_tv.strip().upper()
+        if apply_tv and not custom_tv.strip():
+            st.session_state.pop("stoch_tv_override", None)
+        tv_symbol = st.session_state.get("stoch_tv_override", default_tv)
+        tv_tab, cal_tab = st.tabs(["TradingView live chart", "Historical calibration & GBM fit"])
+        with tv_tab:
+            st.markdown("**" + asset_label + " · " + tv_symbol + "**")
+            _tradingview_chart(tv_symbol, interval_tv, 560)
+            st.caption("TradingView is an embedded visualization. It does not expose its chart data to the Python estimator; the estimator below independently downloads adjusted historical closes from Yahoo Finance.")
+        with cal_tab:
+            d1,d2 = st.columns(2)
+            with d1: hist_start = st.date_input("Calibration start", value=pd.Timestamp("2018-01-01").date(), key="stoch_hist_start")
+            with d2: hist_end = st.date_input("Calibration end (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key="stoch_hist_end")
+            if hist_start >= hist_end:
+                st.error("Calibration start must precede end date.")
+            else:
+                with st.spinner("Downloading adjusted historical prices and fitting GBM parameters..."):
+                    hist = _asset_history(yahoo_ticker, str(hist_start), str(hist_end))
+                if hist.empty or len(hist) < 30:
+                    st.warning("Not enough historical observations were returned. Try another instrument or date range.")
+                else:
+                    px_series = hist["Adjusted close"].dropna()
+                    logret = np.log(px_series).diff().dropna()
+                    ann_factor = 252.0
+                    sigma_hat = float(logret.std(ddof=0) * np.sqrt(ann_factor))
+                    mu_hat = float(logret.mean() * ann_factor + 0.5 * sigma_hat**2)
+                    drift_log = float(logret.mean() * ann_factor)
+                    rolling_vol = logret.rolling(63).std(ddof=0) * np.sqrt(ann_factor)
+                    r1,r2,r3,r4 = st.columns(4)
+                    r1.metric("GBM μ estimate", f"{mu_hat:.2%}")
+                    r2.metric("Annual σ estimate", f"{sigma_hat:.2%}")
+                    r3.metric("Log-return drift", f"{drift_log:.2%}")
+                    r4.metric("Observations", f"{len(logret):,}")
+                    st.latex(r"\hat{\sigma}=\sqrt{252}\,s(r_t),\qquad \hat{\mu}=252\,\bar r+\frac{1}{2}\hat{\sigma}^{2}")
+                    fit_fig = go.Figure()
+                    fit_fig.add_trace(go.Scatter(x=px_series.index,y=px_series,name="Adjusted close",line=dict(color="#39D0C8",width=2)))
+                    fit_fig.update_layout(title=asset_label + " · historical adjusted close",yaxis_title="Price")
+                    st.plotly_chart(_polish(fit_fig,330),use_container_width=True)
+                    vol_fig = go.Figure()
+                    vol_fig.add_trace(go.Scatter(x=rolling_vol.index,y=rolling_vol,name="63-session annualized volatility",line=dict(color="#F4A261",width=2),fill="tozeroy"))
+                    vol_fig.add_hline(y=sigma_hat,line_dash="dash",line_color="#39D0C8",annotation_text="Full-sample σ")
+                    vol_fig.update_layout(title="Rolling realized volatility · regime stability",yaxis_title="Annualized volatility")
+                    st.plotly_chart(_polish(vol_fig,300),use_container_width=True)
+                    residual = logret - logret.mean()
+                    diag1,diag2,diag3 = st.columns(3)
+                    diag1.metric("Daily return skew",f"{logret.skew():.3f}")
+                    diag2.metric("Daily return excess kurtosis",f"{logret.kurtosis():.3f}")
+                    diag3.metric("Return autocorrelation · lag 1",f"{logret.autocorr(1):.3f}")
+                    st.caption("Large skew/kurtosis, autocorrelation or unstable rolling volatility are warnings that constant-parameter GBM may be a poor fit. These are diagnostics, not a formal goodness-of-fit test.")
+                    st.download_button("Download calibration data",hist.assign(LogReturn=logret.reindex(hist.index)).to_csv().encode("utf-8"),file_name="gbm_"+yahoo_ticker.replace("^","").replace("=","_")+"_calibration.csv",mime="text/csv")
+                    st.session_state["stoch_fit_mu"] = mu_hat
+                    st.session_state["stoch_fit_sigma"] = max(sigma_hat,0.001)
+                    if st.button("Use fitted μ and σ in GBM simulator",type="primary",key="apply_fitted_gbm"):
+                        st.session_state["gbm_mu_input"] = mu_hat
+                        st.session_state["gbm_sigma_input"] = max(sigma_hat,0.001)
+                        st.success("Calibration values saved for the simulator below. Re-run the page if inputs do not refresh.")
+        st.divider()
+        st.subheader("GBM simulation · calibrated or user-defined parameters")
+        st.latex(r"dS_t = \mu S_t\,dt + \sigma S_t\,dW_t")
         st.latex(r"dS_t = \mu S_t\,dt + \sigma S_t\,dW_t")
         st.write("The exact time-step solution is S(t+Δt) = S(t) exp[(μ − σ²/2)Δt + σ√Δt Z], where Z is standard normal.")
         a, b, c = st.columns(3)
         with a:
             s0 = st.number_input("Initial price S₀", min_value=0.01, value=100.0, step=5.0)
-            mu = st.number_input("Annual drift μ", value=0.08, step=0.01, format="%.3f")
+            mu = st.number_input("Annual drift μ", value=float(st.session_state.get("gbm_mu_input",0.08)), step=0.01, format="%.3f", key="gbm_mu_input")
         with b:
-            sigma = st.number_input("Annual volatility σ", min_value=0.001, value=0.25, step=0.01, format="%.3f")
+            sigma = st.number_input("Annual volatility σ", min_value=0.001, value=float(st.session_state.get("gbm_sigma_input",0.25)), step=0.01, format="%.3f", key="gbm_sigma_input")
             years = st.number_input("Horizon (years)", min_value=0.05, value=1.0, step=0.25)
         with c:
             n_paths = st.select_slider("Simulation paths", options=[250, 500, 1000, 2500, 5000], value=1000)
