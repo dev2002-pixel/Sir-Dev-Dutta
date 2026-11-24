@@ -122,6 +122,7 @@ def stochastic_astro_dashboard():
             _tradingview_chart(tv_symbol, interval_tv, 560)
             st.caption("TradingView is an embedded visualization. It does not expose its chart data to the Python estimator; the estimator below independently downloads adjusted historical closes from Yahoo Finance.")
         with cal_tab:
+            data_ticker = st.text_input("Historical data ticker (Yahoo Finance format)", value=yahoo_ticker, help="This ticker powers the Python estimator. Examples: RELIANCE.NS, ^NSEI, AAPL, GC=F, BZ=F.", key="stoch_data_ticker_" + region).strip()
             d1,d2 = st.columns(2)
             with d1: hist_start = st.date_input("Calibration start", value=pd.Timestamp("2018-01-01").date(), key="stoch_hist_start")
             with d2: hist_end = st.date_input("Calibration end (exclusive)", value=pd.Timestamp.today().date()+pd.Timedelta(days=1), key="stoch_hist_end")
@@ -129,7 +130,7 @@ def stochastic_astro_dashboard():
                 st.error("Calibration start must precede end date.")
             else:
                 with st.spinner("Downloading adjusted historical prices and fitting GBM parameters..."):
-                    hist = _asset_history(yahoo_ticker, str(hist_start), str(hist_end))
+                    hist = _asset_history(data_ticker, str(hist_start), str(hist_end))
                 if hist.empty or len(hist) < 30:
                     st.warning("Not enough historical observations were returned. Try another instrument or date range.")
                 else:
@@ -161,7 +162,15 @@ def stochastic_astro_dashboard():
                     diag2.metric("Daily return excess kurtosis",f"{logret.kurtosis():.3f}")
                     diag3.metric("Return autocorrelation · lag 1",f"{logret.autocorr(1):.3f}")
                     st.caption("Large skew/kurtosis, autocorrelation or unstable rolling volatility are warnings that constant-parameter GBM may be a poor fit. These are diagnostics, not a formal goodness-of-fit test.")
-                    st.download_button("Download calibration data",hist.assign(LogReturn=logret.reindex(hist.index)).to_csv().encode("utf-8"),file_name="gbm_"+yahoo_ticker.replace("^","").replace("=","_")+"_calibration.csv",mime="text/csv")
+                    observed_log_drift = float(logret.mean() * 252)
+                    theoretical_log_drift = mu_hat - 0.5 * sigma_hat**2
+                    st.markdown("#### Itô log-price consistency check")
+                    st.latex(r"d\\log S_t = (\\mu-\\frac{1}{2}\\sigma^2)dt+\\sigma dW_t")
+                    q1,q2 = st.columns(2)
+                    q1.metric("Observed annualized mean log return", f"{observed_log_drift:.2%}")
+                    q2.metric("GBM / Itô implied log drift", f"{theoretical_log_drift:.2%}")
+                    st.caption("Under the fitted GBM parameterization, μ − ½σ² equals the annualized sample mean log return by construction. This is a parameterization identity, not independent model validation.")
+                    st.download_button("Download calibration data",hist.assign(LogReturn=logret.reindex(hist.index)).to_csv().encode("utf-8"),file_name="gbm_"+data_ticker.replace("^","").replace("=","_")+"_calibration.csv",mime="text/csv")
                     st.session_state["stoch_fit_mu"] = mu_hat
                     st.session_state["stoch_fit_sigma"] = max(sigma_hat,0.001)
                     if st.button("Use fitted μ and σ in GBM simulator",type="primary",key="apply_fitted_gbm"):
