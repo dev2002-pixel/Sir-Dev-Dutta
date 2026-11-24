@@ -83,9 +83,9 @@ def _asset_history(ticker, start, end):
     close.columns = ['Adjusted close']
     return close.sort_index()
 
-def _tradingview_chart(symbol, interval='D', height=560):
-    cfg = {'autosize':True,'symbol':symbol,'interval':interval,'timezone':'Etc/UTC','theme':'dark','style':'1','locale':'en','enable_publishing':False,'allow_symbol_change':True,'hide_side_toolbar':False,'withdateranges':True,'details':True,'studies':['STD;SMA','STD;EMA','STD;RSI'],'container_id':'tv_stochastic_chart'}
-    html = '<div id="tv_stochastic_chart" style="height:' + str(height) + 'px;width:100%"></div><script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget(' + json.dumps(cfg) + ');</script>'
+def _tradingview_chart(symbol, interval='D', height=560, container_id='tv_stochastic_chart'):
+    cfg = {'autosize':True,'symbol':symbol,'interval':interval,'timezone':'Etc/UTC','theme':'dark','style':'1','locale':'en','enable_publishing':False,'allow_symbol_change':True,'hide_side_toolbar':False,'withdateranges':True,'details':True,'studies':['STD;SMA','STD;EMA','STD;RSI'],'container_id':container_id}
+    html = '<div id="' + container_id + '" style="height:' + str(height) + 'px;width:100%"></div><script src="https://s3.tradingview.com/tv.js"></script><script>new TradingView.widget(' + json.dumps(cfg) + ');</script>'
     components.html(html, height=height+20, scrolling=False)
 
 def stochastic_astro_dashboard():
@@ -165,7 +165,7 @@ def stochastic_astro_dashboard():
                     observed_log_drift = float(logret.mean() * 252)
                     theoretical_log_drift = mu_hat - 0.5 * sigma_hat**2
                     st.markdown("#### Itô log-price consistency check")
-                    st.latex(r"d\\log S_t = (\\mu-\\frac{1}{2}\\sigma^2)dt+\\sigma dW_t")
+                    st.latex(r"d\log S_t = (\mu-\frac{1}{2}\sigma^2)dt+\sigma dW_t")
                     q1,q2 = st.columns(2)
                     q1.metric("Observed annualized mean log return", f"{observed_log_drift:.2%}")
                     q2.metric("GBM / Itô implied log drift", f"{theoretical_log_drift:.2%}")
@@ -261,6 +261,16 @@ def stochastic_astro_dashboard():
 
     with astro_tab:
         st.subheader("Planetary-event dates vs Brent crude and gold")
+        st.markdown("#### TradingView commodity charts")
+        astro_tv_interval = st.selectbox("Commodity chart timeframe", ["15", "60", "240", "D", "W", "M"], index=3, key="astro_tv_interval")
+        tv_brent, tv_gold = st.columns(2)
+        with tv_brent:
+            st.caption("Brent crude futures · continuous front-month proxy")
+            _tradingview_chart("NYMEX:BR1!", astro_tv_interval, 420, "tv_astro_brent")
+        with tv_gold:
+            st.caption("Gold futures · continuous front-month proxy")
+            _tradingview_chart("COMEX:GC1!", astro_tv_interval, 420, "tv_astro_gold")
+        st.caption("TradingView charts are for visual inspection. Event-study calculations below continue to use Yahoo Finance historical proxy prices, not data extracted from TradingView.")
         st.warning("Astrology is not an established financial forecasting method. This workspace is an exploratory event-study tool only; it cannot establish causation or validate astrological effects.")
         st.write("Upload a dated event calendar, then compare event-window commodity returns with non-event observations. No planetary ephemeris is generated or assumed by this app.")
         st.markdown("Required event CSV columns: date, body, event. Example: 2026-01-15, Mars, retrograde_station.")
