@@ -1667,9 +1667,11 @@ def tradingview_visual_terminal():
         components.html(html, height=720, scrolling=False)
         st.caption('Use TradingView drawing tools, indicators, symbol search, crosshair, comparison and multi-timeframe controls inside the chart.')
     with heat:
-        html = '<iframe src="https://www.tradingview.com/widgetembed/?colorTheme=dark&locale=en&width=100%25&height=650&isTransparent=true" style="width:100%;height:660px;border:0;border-radius:12px"></iframe>'
+        heat_source = {'India · INR':'NSE','United States · USD':'SPX500','Global futures & FX':'SPX500'}[market]
+        heat_config = {'dataSource':heat_source,'blockSize':'market_cap_basic','blockColor':'change','grouping':'sector','locale':'en','symbolUrl':'','colorTheme':'dark','exchanges':[],'hasTopBar':True,'isDataSetEnabled':True,'isZoomEnabled':True,'hasSymbolTooltip':True,'isMonoSize':False,'width':'100%','height':'660'}
+        html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-stock-heatmap.js" async>' + json.dumps(heat_config) + '</script>'
         components.html(html, height=675, scrolling=False)
-        st.caption('Heatmap content is supplied by TradingView widget defaults and is a visual overview, not a downloadable feed.')
+        st.caption('Heatmap uses TradingView’s market-cap and price-change visualization for the selected market universe; symbol coverage depends on the provider.')
     with tape:
         tape_config = {'symbols':[{'proName':v,'title':k} for k,v in list(presets[market].items())[:8]],'colorTheme':'dark','locale':'en','isTransparent':True,'showSymbolLogo':True,'displayMode':'adaptive'}
         html = '<div class="tradingview-widget-container"><div class="tradingview-widget-container__widget"></div></div><script src="https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js" async>' + json.dumps(tape_config) + '</script>'
