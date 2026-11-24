@@ -1661,16 +1661,18 @@ def tradingview_visual_terminal():
     with c: style = st.selectbox('Chart style', ['Candles','Line','Bars'], key='tv_chart_style')
     preset_symbol = presets[market][label]
     with st.form('tv_custom_symbol_form'):
-        x,y = st.columns([3,1])
-        with x: typed_symbol = st.text_input('Enter a specific stock / ticker', placeholder='Examples: NASDAQ:NVDA · NSE:RELIANCE · NYSE:IBM · NASDAQ:MSFT', value=st.session_state.get('tv_symbol_input', ''))
+        x,y,z = st.columns([3,1,1])
+        with x: typed_symbol = st.text_input('Enter a specific stock / ticker', placeholder='Examples: NASDAQ:NVDA · NSE:RELIANCE · NYSE:IBM · NASDAQ:MSFT')
         with y: apply_symbol = st.form_submit_button('Apply ticker', type='primary', use_container_width=True)
+        with z: reset_symbol = st.form_submit_button('Use preset', use_container_width=True)
     if apply_symbol:
         cleaned = typed_symbol.strip().upper()
         if cleaned:
             st.session_state['tv_applied_symbol'] = cleaned
-            st.session_state['tv_symbol_input'] = cleaned
         else:
             st.warning('Enter a TradingView symbol, for example NASDAQ:NVDA.')
+    if reset_symbol:
+        st.session_state.pop('tv_applied_symbol', None)
     symbol = st.session_state.get('tv_applied_symbol', preset_symbol)
     if not st.session_state.get('tv_applied_symbol'): symbol = preset_symbol
     st.markdown('**Active chart:** `' + symbol + '`  ·  ' + market + '  ·  ' + interval)
